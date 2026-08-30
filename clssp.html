@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>clssp2-蜂蜜影视</title>
+</head>
+<body>
+<script>
+// ==================== 遮天九秘 · 蜂蜜影视HTML源 ====================
+// 目标站: https://www.clssp2.xyz
+// 格式: 蜂蜜影视/TVBox通用JS接口
+// 优势: 在WebView中运行，自带JS引擎，可自动通过Cloudflare验证
+// =================================================================
+
+var siteUrl = "https://www.clssp2.xyz";
+
+// 列字秘 · 分类硬编码
+var classMap = {
+    "20": "主播网红",
+    "21": "偷拍自拍",
+    "22": "人妻熟女",
+    "23": "强奸乱伦",
+    "24": "制服丝袜",
+    "25": "自卫变态",
+    "26": "国产精品",
+    "27": "亚洲情色",
+    "28": "卡通动漫",
+    "29": "三级伦理",
+    "30": "欧美精品"
+};
+
+// 者字秘 · 同步HTTP请求（WebView中可用）
+function httpGet(url) {
+    try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, false);  // 同步请求
+        xhr.setRequestHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        xhr.setRequestHeader('Referer', siteUrl + '/clssp/');
+        xhr.setRequestHeader('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
+        xhr.setRequestHeader('Accept-Language', 'zh-CN,zh;q=0.9');
+        xhr.send(null);
+
+        if (xhr.status === 200) {
+            console.log('[者字秘] 成功: ' + url + ' | 长度:' + xhr.responseText.length);
+            return xhr.responseText;
+        } else {
+            console.log('[者字秘] 失败: ' + url + ' | 状态:' + xhr.status);
+            return null;
+        }
+    } catch (e) {
+        console.log('[者字秘] 异常: ' + url + ' | ' + e.message);
+        return null;
+    }
+}
+
+// 阵字秘 · 修复图片路径
+function fixPic(pic) {
+    if (!pic) return "";
+    if (pic.indexOf('//') === 0) return 'https:' + pic;
+    if (pic.indexOf('/') === 0) return siteUrl + pic;
+    if (pic.indexOf('http') !== 0) return siteUrl + '/' + pic;
+    return pic;
+}
+
+// 皆字秘 · 广告清洗（m3u8）
+function cleanM3u8(content) {
+    if (!content) return content;
+    var adPatterns = [
+        /https?:\/\/[^/]*ad[^/]*\/.*\.ts/i,
+        /.*_ad_\d+\.ts/i,
+        /.*\/ad\d+\.ts/i,
+        /.*\/gg\d+\.ts/i
+    ];
+    var lines = content.split('\n');
+    var cleaned = [];
+    var skipNext = false;
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        var isAd = false;
+        for (var j = 0; j < adPatterns.length; j++) {
+            if (adPatterns[j].test(line)) {
+                isAd = true;
+                break;
+            }
+        }
+        if (isAd) {
+            skipNext = true;
+            continue;
+        }
+        if (skipNext && line.indexOf('#EXTINF') === 0) {
+            skipNext = false;
+            continue;
+        }
+        cleaned.push(lines[i]);
+    }
+    return cleaned.join('\n');
+}
+
+// ==================== TVBox 标准接口 ====================
+
+function init(extend) {
+    console.log('[红尘仙] 初始化完成: ' + siteUrl);
+    return "done";
+}
+
+function homeContent(filter) {
+    var classes = [];
+    for (var tid in classMap) {
+        classes.push({type_id: tid, type_name: classMap[tid]});
+    }
+    console.log('[临字秘] 返回 ' + classes.length + ' 个分类');
+    return JSON.stringify({class: classes});
+}
+
+function categoryContent(tid, pg, filter, extend) {
+    console.log('[斗字秘] category tid=' + tid + ' pg=' + pg);
+
+    pg = parseInt(pg) || 1;
+
+    var url;
+    if (pg <= 1) {
+        url = siteUrl + '/vodtype/' + tid + '.html';
+    } else {
+        url = siteUrl + '/vodtype/' + tid + '-' + pg + '.html';
+    }
+
+    var html = httpGet(url);
+    if (!html) {
+        console.log('[者字秘] 获取HTML失败');
+        return JSON.stringify({list: [], page: pg, pagecount: pg});
+    }
+
+    // 检测Cloudflare拦截
+    if (html.indexOf('cloudflare') !== -1 || html.indexOf('cf-browser-verification') !== -1) {
+        console.log('[者字秘] Cloudflare拦截！请先在WebView中打开 ' + siteUrl + ' 通过验证');
+        return JSON.stringify({
+            list: [{
+                vod_id: "/voddetail/0.html",
+                vod_name: "【Cloudflare拦截】",
+                vod_pic: "",
+                vod_remarks: "请在浏览器中打开站点通过验证"
+            }],
+            page: pg,
+            pagecount: pg
+        });
+    }
+
+    var videos = [];
+
+    // 策略1: 标准正则提取
+    var pattern1 = /<a[^>]+href="(\/voddetail\/\d+\.html)"[^>]*(?:title="([^"]*)")?[^>]*>[\s\S]*?<img[^>]+(?:data-original|data-src|src)="([^"]*)"[^>]*>[\s\S]*?<\/a>/g;
+    var match;
+    while ((match = pattern1.exec(html)) !== null) {
+        var href = match[1];
+        var title = match[2] || '未知';
+        var pic = match[3] || '';
+        pic = fixPic(pic);
+        videos.push({
+            vod_id: href,
+            vod_name: title,
+            vod_pic: pic,
+            vod_remarks: ''
+        });
+    }
+    console.log('[斗字秘] 策略1匹配到 ' + videos.length + ' 个');
+
+    // 策略2: 宽松提取
+    if (videos.length === 0) {
+        var pattern2 = /href="(\/voddetail\/\d+\.html)"/g;
+        while ((match = pattern2.exec(html)) !== null) {
+            videos.push({
+                vod_id: match[1],
+                vod_name: '未知',
+                vod_pic: '',
+                vod_remarks: ''
+            });
+        }
+        console.log('[斗字秘] 策略2匹配到 ' + videos.length + ' 个');
+    }
+
+    // 去重
+    var seen = {};
+    var unique = [];
+    for (var i = 0; i < videos.length; i++) {
+        if (!seen[videos[i].vod_id]) {
+            seen[videos[i].vod_id] = true;
+            unique.push(videos[i]);
+        }
+    }
+
+    console.log('[斗字秘] 最终返回 ' + unique.length + ' 个视频');
+    return JSON.stringify({list: unique, page: pg, pagecount: 999, limit: 20});
+}
+
+function detailContent(ids) {
+    console.log('[兵字秘] detail ids=' + JSON.stringify(ids));
+
+    if (!ids || ids.length === 0) {
+        return JSON.stringify({list: []});
+    }
+
+    var vod_id = ids[0];
+    var url;
+    if (vod_id.indexOf('/') === 0) {
+        url = siteUrl + vod_id;
+    } else if (/^\d+$/.test(vod_id)) {
+        url = siteUrl + '/voddetail/' + vod_id + '.html';
+    } else {
+        url = vod_id;
+    }
+
+    var html = httpGet(url);
+    if (!html) {
+        return JSON.stringify({list: []});
+    }
+
+    // 提取标题
+    var title = '未知影片';
+    var titleMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/);
+    if (titleMatch) {
+        title = titleMatch[1].trim();
+    }
+
+    var playUrls = [];
+
+    // 策略A: 播放列表
+    var plPattern = /<a[^>]+href="(\/vodplay\/[^"]+)"[^>]*>([^<]+)<\/a>/g;
+    var plMatch;
+    while ((plMatch = plPattern.exec(html)) !== null) {
+        var playUrl = plMatch[1];
+        var name = plMatch[2] ? plMatch[2].trim() : '第1集';
+        if (playUrl.indexOf('http') !== 0) {
+            playUrl = siteUrl + playUrl;
+        }
+        playUrls.push([name, playUrl]);
+    }
+    console.log('[兵字秘] 播放列表: ' + playUrls.length);
+
+    // 策略B: 提取播放页中的真实地址
+    var realUrls = [];
+    for (var i = 0; i < playUrls.length; i++) {
+        var playPage = playUrls[i][1];
+        var name = playUrls[i][0];
+
+        // 如果已经是m3u8/mp4直链，直接用
+        if (playPage.indexOf('.m3u8') !== -1 || playPage.indexOf('.mp4') !== -1) {
+            realUrls.push([name, playPage]);
+            continue;
+        }
+
+        // 否则请求播放页提取真实地址
+        var playHtml = httpGet(playPage);
+        if (playHtml) {
+            // 方法1: video/iframe
+            var videoMatch = playHtml.match(/<video[^>]+src="([^"]+)"/);
+            var iframeMatch = playHtml.match(/<iframe[^>]+src="([^"]+)"/);
+            var urlMatch = playHtml.match(/var\s+url\s*=\s*"([^"]+)"/);
+
+            var realUrl = '';
+            if (videoMatch) realUrl = videoMatch[1];
+            else if (iframeMatch) realUrl = iframeMatch[1];
+            else if (urlMatch) realUrl = urlMatch[1];
+
+            // 方法2: player_aaaa
+            if (!realUrl) {
+                var jsMatch = playHtml.match(/var\s+player_aaaa\s*=\s*({[\s\S]+?})\s*[,;]/);
+                if (jsMatch) {
+                    try {
+                        var data = JSON.parse(jsMatch[1]);
+                        var urlKey = data.url || data.src || data.video || '';
+                        if (urlKey) {
+                            if (urlKey.indexOf('http') !== 0) {
+                                try {
+                                    var decoded = atob(urlKey);
+                                    if (decoded.indexOf('http') === 0) urlKey = decoded;
+                                } catch(e) {
+                                    urlKey = siteUrl + urlKey;
+                                }
+                            }
+                            realUrl = urlKey;
+                        }
+                    } catch(e) {}
+                }
+            }
+
+            // 方法3: 硬匹配m3u8
+            if (!realUrl) {
+                var m3u8Match = playHtml.match(/(https?:\/\/[^\s<>"']+\.m3u8[^\s<>"']*)/);
+                if (m3u8Match) realUrl = m3u8Match[1];
+            }
+
+            if (realUrl) {
+                if (realUrl.indexOf('http') !== 0) {
+                    realUrl = siteUrl + realUrl;
+                }
+                realUrls.push([name, realUrl]);
+            } else {
+                // 如果没提取到，返回播放页链接让TVBox解析
+                realUrls.push([name, playPage]);
+            }
+        } else {
+            realUrls.push([name, playPage]);
+        }
+    }
+
+    // 如果播放列表为空，尝试页面内直接提取
+    if (realUrls.length === 0) {
+        // 页面内video
+        var videoMatch = html.match(/<video[^>]+src="([^"]+)"/);
+        if (videoMatch) {
+            realUrls.push(['第1集', videoMatch[1]]);
+        }
+        // 页面内m3u8
+        var m3u8Pattern = /(https?:\/\/[^\s<>"']+\.m3u8[^\s<>"']*)/g;
+        var m3u8Match;
+        while ((m3u8Match = m3u8Pattern.exec(html)) !== null) {
+            realUrls.push(['第1集', m3u8Match[1]]);
+        }
+    }
+
+    if (realUrls.length === 0) {
+        return JSON.stringify({list: []});
+    }
+
+    // 去重
+    var seen = {};
+    var unique = [];
+    for (var i = 0; i < realUrls.length; i++) {
+        if (!seen[realUrls[i][1]]) {
+            seen[realUrls[i][1]] = true;
+            unique.push(realUrls[i]);
+        }
+    }
+
+    var playStr = unique.map(function(item) {
+        return item[0] + '$' + item[1];
+    }).join('#');
+
+    console.log('[兵字秘] 播放地址: ' + playStr.substring(0, 100) + '...');
+
+    return JSON.stringify({
+        list: [{
+            vod_id: vod_id,
+            vod_name: title,
+            vod_play_from: '蜂蜜直取',
+            vod_play_url: playStr
+        }]
+    });
+}
+
+function playerContent(flag, id, vipFlags) {
+    console.log('[阵字秘] player flag=' + flag + ' id=' + id);
+
+    if (!id) {
+        return JSON.stringify({parse: 0, url: '', header: ''});
+    }
+
+    // m3u8清洗
+    if (id.indexOf('.m3u8') !== -1) {
+        var content = httpGet(id);
+        if (content) {
+            var cleaned = cleanM3u8(content);
+            if (cleaned !== content) {
+                console.log('[皆字秘] 清洗了广告分片');
+            }
+        }
+    }
+
+    var header = 'Referer=' + siteUrl + '/clssp/&User-Agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+    return JSON.stringify({parse: 0, url: id, header: header});
+}
+
+function searchContent(key, quick, pg) {
+    console.log('[前字秘] search key=' + key);
+
+    pg = parseInt(pg) || 1;
+    var url = siteUrl + '/search.html?wd=' + encodeURIComponent(key) + '&page=' + pg;
+
+    var html = httpGet(url);
+    if (!html) {
+        return JSON.stringify({list: []});
+    }
+
+    var videos = [];
+    var pattern = /<a[^>]+href="(\/voddetail\/\d+\.html)"[^>]*(?:title="([^"]*)")?[^>]*>[\s\S]*?<img[^>]+(?:data-original|data-src|src)="([^"]*)"[^>]*>[\s\S]*?<\/a>/g;
+    var match;
+    while ((match = pattern.exec(html)) !== null) {
+        videos.push({
+            vod_id: match[1],
+            vod_name: match[2] || '未知',
+            vod_pic: fixPic(match[3] || ''),
+            vod_remarks: '搜索'
+        });
+    }
+
+    console.log('[前字秘] 搜索到 ' + videos.length + ' 个结果');
+    return JSON.stringify({list: videos});
+}
+
+function isVideoFormat(url) {
+    url = url.toLowerCase();
+    return url.indexOf('.m3u8') !== -1 || 
+           url.indexOf('.mp4') !== -1 || 
+           url.indexOf('.flv') !== -1 || 
+           url.indexOf('.mkv') !== -1 || 
+           url.indexOf('.ts') !== -1 || 
+           url.indexOf('.avi') !== -1;
+}
+
+function manualVideoCheck() {
+    return false;
+}
+
+function localProxy(param) {
+    return null;
+}
+
+console.log('[红尘仙] HTML源加载完成');
+</script>
+</body>
+</html>
