@@ -1,0 +1,928 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101419">
+  <title>NaughtyBlog</title>
+  <script>
+    window.WEBHOME_PAGE_OPENED_AT = Date.now();
+    if (window.fongmiBridge || window.fm || window.fongmi) document.documentElement.classList.add("fm-native");
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel-rgb: 76, 88, 98;
+      --panel: rgba(var(--panel-rgb), .58);
+      --panel-soft: rgba(var(--panel-rgb), .44);
+      --panel-strong: rgba(var(--panel-rgb), .82);
+      --control: rgba(34, 43, 51, .42);
+      --control-active: rgba(48, 61, 70, .58);
+      --text: #f4f7fb;
+      --muted: rgba(226, 234, 242, .72);
+      --line: rgba(255, 255, 255, .2);
+      --line-strong: rgba(255, 255, 255, .34);
+      --focus-line: rgba(168, 218, 255, .72);
+      --focus-line-soft: rgba(168, 218, 255, .42);
+      --focus-glow: rgba(96, 165, 250, .24);
+      --danger: #f09d9d;
+      --radius: 8px;
+      --fm-web-height: 100dvh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; width: 100%; min-height: var(--fm-web-height);
+      background: transparent; color: var(--text); overflow-x: hidden;
+    }
+    html:not(.fm-native), html:not(.fm-native) body {
+      background-color: #303840;
+      background-image:
+        linear-gradient(45deg, rgba(255,255,255,.07) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(255,255,255,.07) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(255,255,255,.07) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.07) 75%);
+      background-position: 0 0, 0 16px, 16px -16px, -16px 0;
+      background-size: 32px 32px;
+    }
+    body { letter-spacing: 0; overscroll-behavior-x: none; }
+    body.detail-active .app { visibility: hidden; pointer-events: none; }
+    button, input { font: inherit; color: inherit; }
+    button {
+      border: 0; margin: 0; padding: 0; appearance: none; -webkit-appearance: none;
+      background: transparent; cursor: pointer; text-align: inherit; touch-action: manipulation;
+    }
+    img { display: block; max-width: 100%; background: rgba(0,0,0,.12); }
+    .app {
+      min-height: var(--fm-web-height);
+      padding: max(12px, env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom));
+      background: transparent;
+    }
+    .topbar {
+      display: grid; grid-template-columns: minmax(0, 1fr);
+      align-items: center; min-height: 42px; margin-bottom: 10px; padding: 0;
+    }
+    h1 { margin: 0; font-size: 17px; line-height: 1.15; font-weight: 880; letter-spacing: 0; }
+    .sub { margin-top: 3px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .icon { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-btn, .btn, .chip, .field {
+      border-radius: var(--radius); background: var(--control);
+      border: 1px solid var(--line); color: var(--text);
+      backdrop-filter: blur(12px) saturate(1.05);
+    }
+    .icon-btn { width: 42px; height: 42px; display: grid; place-items: center; transition: background .16s ease, border-color .16s ease, transform .16s ease; }
+    .icon-btn.is-active { background: var(--control-active); border-color: var(--line-strong); }
+    .btn {
+      min-height: 42px; display: inline-flex; align-items: center; justify-content: center;
+      gap: 7px; padding: 0 14px; font-size: 14px; font-weight: 760; text-decoration: none;
+    }
+    .btn.primary { background: var(--control-active); border-color: var(--line-strong); }
+    .search {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px;
+      min-width: 0; margin: 0; position: relative; z-index: 20;
+    }
+    .search.hidden { display: none; }
+    .field {
+      width: 100%; min-width: 0; min-height: 42px; padding: 0 12px;
+      outline: none; font-size: 14px; background: var(--control);
+    }
+    .search .icon-btn { width: 42px; height: 42px; background: var(--control-active); border-color: var(--line-strong); }
+    .chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 5px; scrollbar-width: none; }
+    .chips::-webkit-scrollbar { display: none; }
+    .chip {
+      flex: 0 0 auto; min-height: 36px; display: inline-flex; align-items: center; justify-content: center;
+      padding: 0 14px; color: var(--muted); font-size: 13px; font-weight: 760; white-space: nowrap;
+    }
+    .chip.active { background: var(--control-active); border-color: var(--line-strong); color: var(--text); }
+    .status {
+      min-height: 38px; display: none; align-items: center; gap: 8px; margin-top: 10px;
+      padding: 8px 10px; border-radius: var(--radius); background: var(--panel-soft);
+      border: 1px solid var(--line); color: var(--muted); font-size: 13px;
+    }
+    .status.show { display: flex; }
+    .spinner {
+      width: 15px; height: 15px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.16); border-top-color: rgba(255,255,255,.76);
+      animation: spin .85s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .grid {
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px; margin-top: 12px; min-height: 180px;
+    }
+    .card {
+      min-width: 0; border-radius: var(--radius); overflow: hidden;
+      background: var(--panel-soft); border: 1px solid var(--line); color: var(--text); text-align: left;
+    }
+    .thumb { position: relative; aspect-ratio: 2 / 3; overflow: hidden; background: rgba(20,24,28,.5); }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .thumb.fallback { display: grid; place-items: center; padding: 8px; text-align: center; }
+    .thumb.fallback span { color: rgba(255,255,255,.28); font-size: 20px; font-weight: 900; line-height: 1.1; word-break: break-word; }
+    .badge {
+      position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px);
+      padding: 3px 6px; border-radius: 6px; background: rgba(0,0,0,.52);
+      border: 1px solid rgba(255,255,255,.16); font-size: 11px; font-weight: 820;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .card-body { min-height: 50px; padding: 7px; background: var(--panel); }
+    .title {
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; font-size: 12px; font-weight: 760; line-height: 1.25; word-break: break-word;
+    }
+    .meta { margin-top: 4px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty {
+      grid-column: 1 / -1; min-height: 120px; display: grid; place-items: center;
+      padding: 18px; border-radius: var(--radius); border: 1px dashed rgba(255,255,255,.22);
+      background: var(--panel-soft); color: var(--muted); text-align: center;
+    }
+    .more { width: 100%; margin-top: 12px; display: none; }
+    .more.show { display: inline-flex; }
+    .sheet {
+      position: fixed; inset: 0; z-index: 40; display: none; background: transparent;
+      padding: max(12px, env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom));
+      overflow: auto;
+    }
+    .sheet.active { display: block; }
+    .detail { min-height: calc(var(--fm-web-height) - 30px); display: grid; grid-template-rows: auto 1fr; gap: 14px; }
+    .detail-head { display: flex; align-items: center; gap: 10px; }
+    .detail-head .brand { min-height: 42px; }
+    .detail-card {
+      display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 14px;
+      align-content: start; padding: 12px; border-radius: var(--radius);
+      background: var(--panel-soft); border: 1px solid var(--line);
+      position: relative; overflow: hidden;
+    }
+    .detail-card::before {
+      content: ""; position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,.08), transparent 42%), linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.18));
+      pointer-events: none;
+    }
+    .detail-card > * { position: relative; }
+    .poster {
+      width: 112px; aspect-ratio: 2 / 3; border-radius: var(--radius); overflow: hidden;
+      background: rgba(0,0,0,.2); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 14px 34px rgba(0,0,0,.26);
+    }
+    .poster img { width: 100%; height: 100%; object-fit: cover; }
+    .detail-title { margin: 0; font-size: 18px; line-height: 1.22; font-weight: 880; word-break: break-word; }
+    .detail-summary { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+    .detail-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+    .detail-tag {
+      min-height: 26px; display: inline-flex; align-items: center; padding: 0 9px;
+      border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+      color: var(--muted); font-size: 11px; font-weight: 720;
+    }
+    .detail-extra { grid-column: 1 / -1; display: grid; gap: 10px; margin-top: 2px; }
+    .detail-section {
+      padding: 11px; border-radius: var(--radius); background: rgba(18,24,30,.24); border: 1px solid rgba(255,255,255,.12);
+    }
+    .detail-section-title { margin-bottom: 7px; color: var(--text); font-size: 12px; font-weight: 820; }
+    .detail-section-text { color: var(--muted); font-size: 13px; line-height: 1.6; word-break: break-word; }
+    .detail-section-text p { margin: 0; }
+    .detail-section-text p + p { margin-top: 7px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: auto; padding-top: 12px; }
+    .actions .btn.primary { min-width: 112px; background: rgba(245,249,252,.2); border-color: var(--line-strong); }
+    .toast {
+      position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom));
+      z-index: 80; display: none; min-height: 42px; align-items: center; padding: 10px 12px;
+      border-radius: var(--radius); background: var(--panel-strong); border: 1px solid var(--line);
+      color: var(--text); font-size: 13px; box-shadow: 0 14px 34px rgba(0,0,0,.3);
+    }
+    .toast.show { display: flex; }
+    .focusable:focus, button:focus, input:focus {
+      outline: none; border-color: var(--focus-line);
+      box-shadow: 0 0 0 1px var(--focus-line-soft), 0 10px 24px rgba(0,0,0,.24), 0 0 18px var(--focus-glow);
+    }
+    .card:focus { transform: translateY(-1px); }
+    @media (min-width: 560px) {
+      .app, .sheet { padding-left: 18px; padding-right: 18px; }
+      .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    }
+    @media (min-width: 900px) {
+      .grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+      .detail-card { grid-template-columns: 170px minmax(0, 1fr); gap: 18px; padding: 16px; }
+      .poster { width: 170px; }
+      .detail-title { font-size: 24px; }
+      .detail-extra { grid-column: 2; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app" id="app">
+    <header class="topbar">
+      <form class="search" id="searchForm" autocomplete="off">
+        <input class="field focusable" id="searchInput" type="search" placeholder="搜索关键词" readonly>
+        <button class="icon-btn focusable" type="submit" aria-label="搜索" title="搜索">
+          <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        </button>
+      </form>
+    </header>
+    <nav class="chips" id="chips" aria-label="分类"></nav>
+    <div class="status" id="status"><span class="spinner"></span><span id="statusText">加载中</span></div>
+    <section class="grid" id="grid" aria-live="polite"></section>
+    <button class="btn more focusable" id="moreBtn" type="button">加载更多</button>
+  </main>
+
+  <section class="sheet" id="detailSheet" aria-hidden="true">
+    <div class="detail">
+      <div class="detail-head">
+        <button class="icon-btn focusable" id="closeDetailBtn" type="button" aria-label="返回" title="返回">
+          <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <div class="brand">
+          <div>
+            <h1>详情</h1>
+            <div class="sub" id="detailSub">NaughtyBlog</div>
+          </div>
+        </div>
+      </div>
+      <div id="detailBody"></div>
+    </div>
+  </section>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var HOST = "https://www.naughtyblog.st";
+      var CATS = [
+        ["", "最新"],
+        ["clips", "Clips"],
+        ["movies", "Movies"],
+        ["siterips", "Siterips"],
+        ["pornstar-collections", "Pornstar"],
+        ["onlyfans-leaks", "OnlyFans"],
+        ["4k", "4K"],
+        ["hd", "HD"],
+        ["amateurs", "Amateur"],
+        ["anal", "Anal"],
+        ["big-tits", "Big Tits"],
+        ["blowjob", "Blowjob"],
+        ["milf", "MILF"],
+        ["teens", "Teen"],
+        ["threesome", "Threesome"],
+        ["p-o-v", "POV"]
+      ];
+      var CACHE_RULE = "naughtyblog_webhome";
+      var SNAPSHOT_KEY = "naughtyblog_state_v1";
+      var state = {
+        cat: "",
+        key: "",
+        page: 1,
+        items: [],
+        busy: false,
+        hasMore: false,
+        detail: null,
+        focusKey: "",
+        scrollY: 0,
+        sdkReady: false
+      };
+      var nativeSdkWait = null;
+      var toastTimer = 0;
+
+      function $(id) { return document.getElementById(id); }
+
+      function escapeHtml(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+      function escapeAttr(value) { return escapeHtml(value).replace(/`/g, "&#96;"); }
+
+      function absoluteUrl(url) {
+        var text = String(url || "").trim();
+        if (!text) return "";
+        if (/^\/\//.test(text)) return "https:" + text;
+        if (/^https?:\/\//i.test(text)) return text;
+        if (text.charAt(0) === "/") return HOST + text;
+        return HOST + "/" + text.replace(/^\.?\//, "");
+      }
+
+      function waitForNativeSdk(timeout) {
+        if (window.fm || !window.fongmiBridge) return Promise.resolve(!!window.fm);
+        if (nativeSdkWait) return nativeSdkWait;
+        nativeSdkWait = new Promise(function (resolve) {
+          var done = false;
+          function finish() {
+            if (done) return;
+            done = true;
+            window.removeEventListener("fmsdk", finish);
+            nativeSdkWait = null;
+            resolve(!!window.fm);
+          }
+          window.addEventListener("fmsdk", finish);
+          setTimeout(finish, timeout == null ? 1800 : timeout);
+        });
+        return nativeSdkWait;
+      }
+
+      function sdk() {
+        if (window.fm) return window.fm;
+        return {
+          req: browserRequest,
+          play: function (url) {
+            window.open(url, "_blank", "noopener,noreferrer");
+            return Promise.resolve({});
+          },
+          search: function (keyword) {
+            toast("原生搜索：" + keyword);
+            return Promise.resolve({});
+          },
+          cache: {
+            get: function (key) { return Promise.resolve(localStorage.getItem("fm_" + key) || ""); },
+            set: function (key, value) { localStorage.setItem("fm_" + key, value); return Promise.resolve({}); },
+            del: function (key) { localStorage.removeItem("fm_" + key); return Promise.resolve({}); }
+          },
+          back: function () { history.back(); return Promise.resolve({}); }
+        };
+      }
+
+      function browserRequest(url, options) {
+        options = options || {};
+        return fetch(url, {
+          method: options.method || "GET",
+          headers: options.headers || {},
+          body: options.body || undefined,
+          credentials: options.credentials === "include" ? "include" : "same-origin"
+        }).then(function (resp) {
+          return resp.text().then(function (text) {
+            return { ok: resp.ok, status: resp.status, url: resp.url, headers: {}, cookies: [], body: text };
+          });
+        }).catch(function (error) {
+          return { ok: false, status: 500, url: url, headers: {}, cookies: [], body: "", error: String(error && error.message || error) };
+        });
+      }
+
+      function requestText(url) {
+        return waitForNativeSdk(1800).then(function () {
+          return sdk().req(url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Referer": HOST + "/",
+              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "Accept-Language": "en-US,en;q=0.9"
+            },
+            timeout: 30,
+            credentials: "include"
+          });
+        }).then(function (resp) {
+          if (!resp || !resp.body) throw new Error(resp && resp.error || ("HTTP " + (resp && resp.status || 500)));
+          var body = String(resp.body);
+          if (body.indexOf("Just a moment") >= 0 || body.indexOf("challenge-platform") >= 0 || body.indexOf("cf-browser-verification") >= 0) {
+            throw new Error("Cloudflare拦截，请稍后再试或换网络");
+          }
+          if (!resp.ok && resp.status >= 400) throw new Error("HTTP " + resp.status);
+          return body;
+        });
+      }
+
+      function setStatus(text, loading) {
+        $("statusText").textContent = text || "";
+        $("status").classList.toggle("show", !!text);
+        $("status").querySelector(".spinner").style.display = loading ? "" : "none";
+      }
+
+      function toast(text) {
+        clearTimeout(toastTimer);
+        $("toast").textContent = text;
+        $("toast").classList.add("show");
+        toastTimer = setTimeout(function () { $("toast").classList.remove("show"); }, 2400);
+      }
+
+      function listUrl() {
+        if (state.key) {
+          if (state.page <= 1) return HOST + "/?s=" + encodeURIComponent(state.key);
+          return HOST + "/page/" + state.page + "/?s=" + encodeURIComponent(state.key);
+        }
+        if (!state.cat) {
+          if (state.page <= 1) return HOST + "/";
+          return HOST + "/page/" + state.page + "/";
+        }
+        var base = HOST + "/category/" + state.cat + "/";
+        if (state.page <= 1) return base;
+        return base + "page/" + state.page + "/";
+      }
+
+      function cleanText(text) {
+        return String(text || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      }
+
+      function parseList(html) {
+        var items = [];
+        var seen = {};
+        // 策略1: post-link-overlay
+        var re1 = /<a\s+([^>]*?)class=["']([^"']*post-link-overlay[^"']*)["']([^>]*?)>/gi;
+        var m;
+        while ((m = re1.exec(html)) !== null) {
+          var full = m[0];
+          var hrefM = /href=["']([^"']+)["']/.exec(full);
+          var titleM = /title=["']([^"']*)["']/.exec(full);
+          var href = hrefM ? hrefM[1] : "";
+          var title = titleM ? cleanText(titleM[1]) : "";
+          if (!href || seen[href]) continue;
+          seen[href] = true;
+          var start = m.index + full.length;
+          var block = html.substring(start, start + 3500);
+          var pic = "";
+          var imgM = /src=["'](https:\/\/t\d+\.pixhost\.(?:cc|to)\/[^"']+)["']/.exec(block);
+          if (imgM) pic = imgM[1];
+          else {
+            imgM = /src=["'](https?:\/\/[^"']+)["']/.exec(block);
+            if (imgM) pic = imgM[1];
+          }
+          if (!title) {
+            var tm = /<h[23][^>]*>([\s\S]*?)<\/h[23]>/i.exec(block);
+            if (tm) title = cleanText(tm[1]).substring(0, 80);
+          }
+          items.push({
+            id: href,
+            title: title || "Untitled",
+            pic: pic,
+            sn: ""
+          });
+          if (items.length >= 40) break;
+        }
+        // 策略2: 宽松匹配文章链接
+        if (items.length < 5) {
+          var re2 = /<a[^>]+href=["'](https:\/\/www\.naughtyblog\.st\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+          while ((m = re2.exec(html)) !== null) {
+            var href2 = m[1];
+            if (/\/(category|tag|page|author)\//.test(href2) || href2.indexOf("#") >= 0) continue;
+            if (seen[href2] || href2.replace(/\/$/, "") === HOST) continue;
+            seen[href2] = true;
+            var title2 = cleanText(m[2]).substring(0, 80);
+            items.push({ id: href2, title: title2 || "Untitled", pic: "", sn: "" });
+            if (items.length >= 30) break;
+          }
+        }
+        return items;
+      }
+
+      function renderChips() {
+        var html = "";
+        CATS.forEach(function (c) {
+          var active = (state.key ? false : state.cat === c[0]) ? " active" : "";
+          html += '<button class="chip focusable' + active + '" type="button" data-cat="' + escapeAttr(c[0]) + '">' + escapeHtml(c[1]) + '</button>';
+        });
+        $("chips").innerHTML = html;
+      }
+
+      function posterGradient(id) {
+        var h = 0;
+        var s = String(id || "");
+        for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffffff;
+        var a = (h >> 16) & 0xff, b = (h >> 8) & 0xff, c = h & 0xff;
+        return "linear-gradient(135deg, rgb(" + (40 + a % 80) + "," + (40 + b % 80) + "," + (50 + c % 80) + "), rgb(" + (20 + a % 40) + "," + (20 + b % 40) + "," + (30 + c % 40) + "))";
+      }
+
+      function renderList(opts) {
+        opts = opts || {};
+        if (!state.items.length && !state.busy) {
+          $("grid").innerHTML = '<div class="empty">暂无内容</div>';
+          $("moreBtn").classList.remove("show");
+          return;
+        }
+        var html = "";
+        state.items.forEach(function (item, idx) {
+          var key = "vod-" + idx + "-" + (item.id || "").substring(0, 40);
+          var picHtml = item.pic
+            ? '<img src="' + escapeAttr(item.pic) + '" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentNode.classList.add(\'fallback\');this.remove();">'
+            : "";
+          var thumbClass = item.pic ? "thumb" : "thumb fallback";
+          var fallback = item.pic ? "" : '<span>' + escapeHtml((item.title || "?").charAt(0)) + '</span>';
+          html +=
+            '<button class="card focusable" type="button" data-id="' + escapeAttr(item.id) + '" data-key="' + escapeAttr(key) + '">' +
+            '<div class="' + thumbClass + '" style="background:' + posterGradient(item.id) + '">' + picHtml + fallback +
+            (item.sn ? '<span class="badge">' + escapeHtml(item.sn) + '</span>' : "") +
+            '</div><div class="card-body"><div class="title">' + escapeHtml(item.title) + '</div></div></button>';
+        });
+        $("grid").innerHTML = html;
+        $("moreBtn").classList.toggle("show", !!state.hasMore);
+        if (opts.focus) setTimeout(restoreListFocus, 40);
+      }
+
+      function loadList(reset) {
+        if (state.busy) return Promise.resolve();
+        if (reset) {
+          state.page = 1;
+          state.items = [];
+          state.hasMore = false;
+          window.scrollTo(0, 0);
+        }
+        state.busy = true;
+        setStatus("加载中", true);
+        renderList();
+        return requestText(listUrl()).then(function (html) {
+          var next = parseList(html);
+          if (reset) state.items = [];
+          var known = {};
+          state.items.forEach(function (item) { known[item.id] = true; });
+          next.forEach(function (item) {
+            if (!known[item.id]) state.items.push(item);
+          });
+          state.hasMore = next.length >= 10;
+          setStatus("", false);
+        }).catch(function (error) {
+          setStatus("", false);
+          if (reset && !state.items.length) {
+            $("grid").innerHTML = '<div class="empty">加载失败：' + escapeHtml(error.message || error) + '</div>';
+          }
+          toast("加载失败：" + (error.message || error));
+        }).then(function () {
+          state.busy = false;
+          renderList({ focus: true });
+          saveSnapshot();
+        });
+      }
+
+      function loadMore() {
+        if (state.busy || !state.hasMore) return;
+        state.page += 1;
+        loadList(false);
+      }
+
+      function switchCat(cat) {
+        state.cat = cat;
+        state.key = "";
+        $("searchInput").value = "";
+        renderChips();
+        history.replaceState({ route: "home" }, "", "#home");
+        loadList(true);
+      }
+
+      function doSearch(keyword) {
+        keyword = String(keyword || "").trim();
+        if (!keyword) return;
+        state.key = keyword;
+        state.cat = "";
+        renderChips();
+        history.replaceState({ route: "home" }, "", "#search=" + encodeURIComponent(keyword));
+        loadList(true);
+      }
+
+      function extractVideo(html) {
+        var patterns = [
+          /<iframe[^>]+src=["']([^"']+)["']/i,
+          /<video[^>]+src=["']([^"']+)["']/i,
+          /<source[^>]+src=["']([^"']+)["']/i
+        ];
+        for (var i = 0; i < patterns.length; i++) {
+          var m = patterns[i].exec(html);
+          if (m) {
+            var u = m[1];
+            if (u.indexOf("//") === 0) u = "https:" + u;
+            return absoluteUrl(u);
+          }
+        }
+        var hosts = /https?:\/\/(?:k2s\.cc|keep2share\.cc|fileboom\.me|tezfiles\.com|rapidgator\.net|nitroflare\.com|uploadgig\.com|fboom\.me|daofile\.com)\/[^"'\s<>]+/i;
+        var hm = hosts.exec(html);
+        if (hm) return hm[0];
+        var hidden = /id=["']hiddenlinks["'][^>]*>([\s\S]*?)<\/div>/i.exec(html);
+        if (!hidden) hidden = /class=["'][^"']*hidden-links[^"']*["'][^>]*>([\s\S]*?)<\/div>/i.exec(html);
+        if (hidden) {
+          var hm2 = hosts.exec(hidden[1]);
+          if (hm2) return hm2[0];
+          var am = /href=["'](https?:\/\/[^"']+)["']/i.exec(hidden[1]);
+          if (am && /k2s|keep2share|fileboom|tezfiles|rapidgator|nitroflare/.test(am[1])) return am[1];
+        }
+        var linkRe = /<a[^>]+href=["']([^"']+)["']/gi;
+        var lm;
+        while ((lm = linkRe.exec(html)) !== null) {
+          var href = lm[1];
+          if (/\.(m3u8|mp4|flv|mkv|ts)(\?|$)/i.test(href)) return absoluteUrl(href);
+          if (/k2s\.cc|keep2share|fileboom|tezfiles|rapidgator|nitroflare|fboom\.me/.test(href)) return absoluteUrl(href);
+        }
+        return "";
+      }
+
+      function openDetail(id, options) {
+        options = options || {};
+        var existing = state.items.find(function (item) { return item.id === String(id); }) || { id: String(id), title: "NaughtyBlog", sn: "", pic: "" };
+        if (options.forceSheet) {
+          state.detail = { loading: true, item: existing };
+          renderDetail();
+          showDetail(options.skipHistory);
+        } else {
+          setStatus("读取详情", true);
+        }
+        requestText(absoluteUrl(id)).then(function (html) {
+          var title = "";
+          var og = /property=["']og:title["'][^>]+content=["']([^"']+)["']/i.exec(html);
+          if (og) title = cleanText(og[1]);
+          else {
+            var h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
+            if (h1) title = cleanText(h1[1]);
+            else {
+              var t = /<title>([\s\S]*?)<\/title>/i.exec(html);
+              if (t) title = cleanText(t[1]).split(" - ")[0].split(" | ")[0];
+            }
+          }
+          if (!title) title = existing.title || "NaughtyBlog";
+
+          var pic = existing.pic || "";
+          var ogImg = /property=["']og:image["'][^>]+content=["']([^"']+)["']/i.exec(html);
+          if (ogImg) pic = ogImg[1];
+          else {
+            var imgM = /src=["'](https:\/\/t\d+\.pixhost\.(?:cc|to)\/[^"']+)["']/i.exec(html);
+            if (imgM) pic = imgM[1];
+          }
+
+          var playUrl = extractVideo(html);
+          var desc = "";
+          var dm = /id=["']post-index-content["'][^>]*>([\s\S]*?)<\/span>/i.exec(html);
+          if (dm) desc = cleanText(dm[1]).substring(0, 500);
+          if (!desc) desc = title;
+
+          var remarks = "";
+          if (playUrl && /k2s|keep2share|fileboom|tezfiles|rapidgator/.test(playUrl)) remarks = "网盘";
+
+          state.detail = {
+            item: existing,
+            title: title,
+            pic: pic,
+            url: playUrl,
+            desc: desc,
+            remarks: remarks
+          };
+          setStatus("", false);
+          saveSnapshot();
+          renderDetail();
+          showDetail(options.skipHistory);
+        }).catch(function (error) {
+          setStatus("", false);
+          state.detail = { error: error.message || String(error), item: existing };
+          renderDetail();
+          showDetail(options.skipHistory);
+        });
+      }
+
+      function showDetail(skipHistory) {
+        document.body.classList.add("detail-active");
+        $("detailSheet").classList.add("active");
+        $("detailSheet").setAttribute("aria-hidden", "false");
+        if (!skipHistory && location.hash !== "#detail") history.pushState({ route: "detail" }, "", "#detail");
+        setTimeout(function () { focusRemoteTarget($("closeDetailBtn")); }, 40);
+      }
+
+      function closeDetail(fromPop) {
+        document.body.classList.remove("detail-active");
+        $("detailSheet").classList.remove("active");
+        $("detailSheet").setAttribute("aria-hidden", "true");
+        state.detail = null;
+        if (!fromPop && location.hash === "#detail") history.back();
+        requestAnimationFrame(restoreListFocus);
+      }
+
+      function renderDetail() {
+        var detail = state.detail || {};
+        var item = detail.item || {};
+        $("detailSub").textContent = detail.remarks || "NaughtyBlog";
+        if (detail.loading) {
+          $("detailBody").innerHTML = '<div class="empty"><span class="spinner"></span>&nbsp;加载详情</div>';
+          return;
+        }
+        if (detail.error) {
+          $("detailBody").innerHTML = '<div class="empty">详情加载失败：' + escapeHtml(detail.error) + '</div>';
+          return;
+        }
+        var title = detail.title || item.title || "NaughtyBlog";
+        var poster = detail.pic || item.pic || "";
+        var posterHtml = poster ? '<img src="' + escapeAttr(poster) + '" alt="" referrerpolicy="no-referrer" onerror="this.remove();">' : "";
+        var playButton = detail.url
+          ? '<button class="btn primary focusable" id="playBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>打开链接</button>'
+          : "";
+        var tags = [detail.remarks].filter(Boolean).map(function (t) {
+          return '<span class="detail-tag">' + escapeHtml(t) + '</span>';
+        }).join("");
+        var desc = detail.desc
+          ? '<section class="detail-section"><div class="detail-section-title">简介</div><div class="detail-section-text"><p>' + escapeHtml(detail.desc) + '</p></div></section>'
+          : "";
+        var extra = desc ? '<div class="detail-extra">' + desc + '</div>' : "";
+        $("detailBody").innerHTML =
+          '<article class="detail-card">' +
+          '<div class="poster" style="background:' + posterGradient(item.id) + '">' + posterHtml + '</div>' +
+          '<div class="detail-summary"><h2 class="detail-title">' + escapeHtml(title) + '</h2>' +
+          '<div class="detail-tags">' + tags + '</div>' +
+          '<div class="actions">' + playButton + '</div>' +
+          '</div>' + extra + '</article>';
+      }
+
+      function playDetail() {
+        var detail = state.detail || {};
+        if (!detail.url) {
+          toast("没有可用链接（多为网盘下载地址）");
+          return;
+        }
+        toast("正在打开");
+        waitForNativeSdk(1500).then(function () {
+          return sdk().play(detail.url, detail.title || "NaughtyBlog");
+        }).catch(function (error) {
+          // 网盘链接直接用浏览器打开
+          window.open(detail.url, "_blank");
+          toast("已尝试打开链接");
+        });
+      }
+
+      function saveSnapshot() {
+        state.scrollY = window.scrollY || 0;
+        var active = document.activeElement;
+        if (active && active.dataset && active.dataset.key) state.focusKey = active.dataset.key;
+        var data = {
+          time: Date.now(),
+          cat: state.cat,
+          key: state.key,
+          page: state.page,
+          items: state.items,
+          hasMore: state.hasMore,
+          scrollY: state.scrollY,
+          focusKey: state.focusKey
+        };
+        try {
+          sdk().cache.set(SNAPSHOT_KEY, JSON.stringify(data), CACHE_RULE).catch(function () {});
+        } catch (e) {
+          try { localStorage.setItem("fm_" + SNAPSHOT_KEY, JSON.stringify(data)); } catch (ignore) {}
+        }
+      }
+
+      function restoreSnapshot() {
+        return waitForNativeSdk(1200).then(function () {
+          return sdk().cache.get(SNAPSHOT_KEY, CACHE_RULE);
+        }).catch(function () {
+          try { return localStorage.getItem("fm_" + SNAPSHOT_KEY) || ""; } catch (e) { return ""; }
+        }).then(function (text) {
+          var data = {};
+          try { data = JSON.parse(text || "{}"); } catch (e) { data = {}; }
+          if (!data || Date.now() - Number(data.time || 0) > 2 * 60 * 60 * 1000) return false;
+          state.cat = data.cat || "";
+          state.key = data.key || "";
+          state.page = Number(data.page || 1);
+          state.items = Array.isArray(data.items) ? data.items : [];
+          state.hasMore = !!data.hasMore;
+          state.scrollY = Number(data.scrollY || 0);
+          state.focusKey = data.focusKey || "";
+          $("searchInput").value = state.key;
+          renderChips();
+          renderList();
+          setTimeout(function () {
+            window.scrollTo(0, state.scrollY || 0);
+            restoreListFocus();
+          }, 50);
+          return state.items.length > 0;
+        });
+      }
+
+      function focusRemoteTarget(target) {
+        if (!target) return;
+        try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
+        var rect = target.getBoundingClientRect();
+        var topLimit = 12, bottomLimit = window.innerHeight - 18;
+        if (rect.top < topLimit || rect.bottom > bottomLimit) target.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+
+      function isVisibleFocusable(el) {
+        if (!el || !el.matches || !el.matches(".focusable,button,input")) return false;
+        if (el.disabled || el.getAttribute("tabindex") === "-1") return false;
+        if (el.closest("[aria-hidden='true']")) return false;
+        var rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== "hidden";
+      }
+
+      function focusScopeRoot() {
+        if ($("detailSheet").classList.contains("active")) return $("detailSheet");
+        return document;
+      }
+
+      function focusables() {
+        return Array.prototype.slice.call(focusScopeRoot().querySelectorAll(".focusable,button,input")).filter(isVisibleFocusable);
+      }
+
+      function restoreListFocus() {
+        var target = state.focusKey ? document.querySelector('[data-key="' + cssEscape(state.focusKey) + '"]') : null;
+        if (!target) target = $("grid").querySelector(".card") || $("chips").querySelector(".chip.active") || $("chips").querySelector(".chip");
+        focusRemoteTarget(target);
+      }
+
+      function cssEscape(value) {
+        if (window.CSS && CSS.escape) return CSS.escape(value);
+        return String(value).replace(/"/g, '\\"');
+      }
+
+      function moveFocus(key) {
+        var current = document.activeElement;
+        if (!isVisibleFocusable(current)) {
+          focusRemoteTarget(focusables()[0]);
+          return;
+        }
+        var items = focusables();
+        var curRect = current.getBoundingClientRect();
+        var cx = curRect.left + curRect.width / 2;
+        var cy = curRect.top + curRect.height / 2;
+        var best = null, bestScore = Infinity;
+        items.forEach(function (el) {
+          if (el === current) return;
+          var r = el.getBoundingClientRect();
+          var x = r.left + r.width / 2, y = r.top + r.height / 2;
+          var dx = x - cx, dy = y - cy;
+          if (key === "ArrowLeft" && dx >= -4) return;
+          if (key === "ArrowRight" && dx <= 4) return;
+          if (key === "ArrowUp" && dy >= -4) return;
+          if (key === "ArrowDown" && dy <= 4) return;
+          var primary = (key === "ArrowLeft" || key === "ArrowRight") ? Math.abs(dx) : Math.abs(dy);
+          var secondary = (key === "ArrowLeft" || key === "ArrowRight") ? Math.abs(dy) : Math.abs(dx);
+          var score = primary * 4 + secondary;
+          if (score < bestScore) { bestScore = score; best = el; }
+        });
+        if (best) focusRemoteTarget(best);
+      }
+
+      function bindEvents() {
+        $("chips").addEventListener("click", function (event) {
+          var btn = event.target.closest("[data-cat]");
+          if (btn) switchCat(btn.dataset.cat);
+        });
+        $("grid").addEventListener("click", function (event) {
+          var card = event.target.closest("[data-id]");
+          if (!card) return;
+          state.focusKey = card.dataset.key || "";
+          saveSnapshot();
+          openDetail(card.dataset.id);
+        });
+        $("moreBtn").addEventListener("click", loadMore);
+        $("searchForm").addEventListener("submit", function (event) {
+          event.preventDefault();
+          doSearch($("searchInput").value);
+          $("searchInput").blur();
+          $("searchInput").setAttribute("readonly", "readonly");
+        });
+        $("searchInput").addEventListener("click", function () { $("searchInput").removeAttribute("readonly"); });
+        $("searchInput").addEventListener("keydown", function (event) {
+          if (event.key === "Enter") $("searchForm").dispatchEvent(new Event("submit", { cancelable: true }));
+          if (event.key === "Escape" || (event.key === "Backspace" && !$("searchInput").value)) {
+            $("searchInput").setAttribute("readonly", "readonly");
+            $("searchInput").blur();
+            restoreListFocus();
+          }
+        });
+        $("closeDetailBtn").addEventListener("click", function () { closeDetail(false); });
+        $("detailBody").addEventListener("click", function (event) {
+          if (event.target.closest("#playBtn")) playDetail();
+        });
+        document.addEventListener("focusin", function (event) {
+          var el = event.target;
+          if (el && el.dataset && el.dataset.key) state.focusKey = el.dataset.key;
+        });
+        document.addEventListener("keydown", function (event) {
+          if (event.defaultPrevented) return;
+          if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].indexOf(event.key) >= 0) {
+            event.preventDefault();
+            moveFocus(event.key);
+          } else if (event.key === "Enter") {
+            var active = document.activeElement;
+            if (active && isVisibleFocusable(active) && active.tagName !== "INPUT") {
+              event.preventDefault();
+              active.click();
+            } else if (active === $("searchInput") && $("searchInput").hasAttribute("readonly")) {
+              event.preventDefault();
+              $("searchInput").removeAttribute("readonly");
+            }
+          } else if (event.key === "Escape" || event.key === "Backspace") {
+            if ($("detailSheet").classList.contains("active")) {
+              event.preventDefault();
+              closeDetail(false);
+            }
+          }
+        });
+        window.addEventListener("popstate", function () {
+          if (location.hash !== "#detail" && $("detailSheet").classList.contains("active")) closeDetail(true);
+        });
+        window.addEventListener("beforeunload", saveSnapshot);
+        window.addEventListener("fmresume", function () { restoreListFocus(); });
+        window.addEventListener("fmsdk", function () {
+          document.documentElement.classList.add("fm-native");
+          state.sdkReady = true;
+        });
+      }
+
+      function init() {
+        renderChips();
+        bindEvents();
+        waitForNativeSdk(1800).then(function (ready) {
+          state.sdkReady = ready;
+          if (window.fongmiBridge || window.fm || window.fongmi) document.documentElement.classList.add("fm-native");
+          return restoreSnapshot();
+        }).then(function (restored) {
+          if (!restored) return loadList(true);
+          if (!state.items.length) return loadList(true);
+          return null;
+        }).then(function () {
+          setTimeout(restoreListFocus, 120);
+        }).catch(function (error) {
+          $("grid").innerHTML = '<div class="empty">初始化失败：' + escapeHtml(error.message || error) + '</div>';
+        });
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>
