@@ -245,6 +245,8 @@
       "use strict";
 
       var HOST = "https://www.naughtyblog.st";
+      // Cloudflare Cookie（过期后需重新获取并替换）
+      var COOKIE = "cf_clearance=F5Ngf5k7YVGWeuCqxRcsjwUvX2LhqBjHxVU_YMnLVuI-1790313663-1.2.1.1-Yc8tTjhyR4U4TgLEyZspHhzlbc3KSpDwpoZdOhlIel4AP6DL8_46YXSBULJwYNXnqpGfOF.hVPnZv2mnMd_sx6gLkkTvqxrj3SUq8jJpQdipCj5Zxl96ib79A7I7mmouJoFP3gepaJw1BHIiOy6MwIFcOguEVbiBHlFdAweNOi5hZLaHH3.bu9pZ2pQYcv3tykee373O6CNfkUJqp5We8.C2k9mACJiYyAmAAYKh2T1nQw4FBq9q3STBbpXtcu.MAibHcLji_MhZAWGUc.c_BYiGJZxcYSnYdd07P9aH8CMXQVs_EEEtWLcX.UEnl_N8HhllsiYsMuIrmoi72gjHBBosGgy0HwsrhbF_UbsGuzI";
       var CATS = [
         ["", "最新"],
         ["clips", "Clips"],
@@ -355,13 +357,15 @@
 
       function requestText(url) {
         return waitForNativeSdk(1800).then(function () {
+          var headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": HOST + "/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9"
+          };
+          if (COOKIE) headers["Cookie"] = COOKIE;
           return sdk().req(url, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Referer": HOST + "/",
-              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-              "Accept-Language": "en-US,en;q=0.9"
-            },
+            headers: headers,
             timeout: 30,
             credentials: "include"
           });
@@ -369,7 +373,7 @@
           if (!resp || !resp.body) throw new Error(resp && resp.error || ("HTTP " + (resp && resp.status || 500)));
           var body = String(resp.body);
           if (body.indexOf("Just a moment") >= 0 || body.indexOf("challenge-platform") >= 0 || body.indexOf("cf-browser-verification") >= 0) {
-            throw new Error("Cloudflare拦截，请稍后再试或换网络");
+            throw new Error("Cloudflare拦截，Cookie可能已过期，请重新获取");
           }
           if (!resp.ok && resp.status >= 400) throw new Error("HTTP " + resp.status);
           return body;
