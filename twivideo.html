@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>TWIVIDEO 接口测试</title>
+
+<style>
+
+  body { font-family: sans-serif; margin: 20px; }
+
+  .item { display: inline-block; width: 180px; margin: 10px; vertical-align: top; }
+
+  .item img { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; }
+
+  .item p { font-size: 13px; margin: 5px 0; word-break: break-all; }
+
+  #log { background: #f5f5f5; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; max-height: 300px; overflow: auto; }
+
+</style>
+
+</head>
+
+<body>
+
+<h2>TWIVIDEO 影片列表测试</h2>
+
+<div>
+
+  <button onclick="loadList('ranking','24','p6')">ランキング(24時間)</button>
+
+  <button onclick="loadList('0','post_date','p4')">新着DL</button>
+
+  <button onclick="loadList('trending','r_count','p7')">急上昇</button>
+
+  <button onclick="loadList('likeranking','24','p6')">高評価</button>
+
+</div>
+
+<br>
+
+<div id="list"></div>
+
+<hr>
+
+<h3>日志</h3>
+
+<div id="log"></div>
+
+<script>
+
+const host = 'https://twivideo.net';
+
+let viewToken = '';
+
+function log(msg) {
+
+  document.getElementById('log').textContent += msg + '\n';
+
+}
+
+// 获取 token
+
+async function getToken() {
+
+  try {
+
+    log('正在获取 view_token...');
+
+    const res = await fetch(host + '/templates/ajax_view_token.php', {
+
+      method: 'POST',
+
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+
+      credentials: 'include'
+
+    });
+
+    const data = await res.json();
+
+    if (data && data.token) {
+
+      viewToken = data.token;
+
+      log('✅ token 获取成功: ' + viewToken);
+
+      return true;
+
+    }
+
+    log('❌ token 获取失败，返回: ' + JSON.stringify(data));
+
+    return false;
+
+  } catch (e) {
+
+    log('❌ 获取 token 异常: ' + e);
+
+    return false;
+
+  }
+
+}
+
+// 加载列表
+
+async function loadList(type, order, ty) {
+
+  document.getElementById('list').innerHTML = '';
+
+  document.getElementById('log').textContent = '';
+
+  if (!viewToken) {
+
+    const ok = await getToken();
+
+    if (!ok) return;
+
+  }
+
+  const formData = new URLSearchParams();
+
+  formData.append('offset', '0');
+
+  formData.append('limit', '50');
+
+  formData.append('tag', 'null');
+
+  formData.append('type', type);
+
+  formData.append('order', order);
+
+  formData.append('le', '1000');
+
+  formData.append('ty', ty);
+
+  formData.append('myarray', '[]');
+
+  formData.append('offset_int', '0');
+
+  formData.append('view_token', viewToken);
+
+  try {
+
+    log('正在请求列表接口...');
+
+    const res = await fetch(host + '/templates/view_lists.php', {
+
+      method: 'POST',
+
+      headers: {
+
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+
+        'X-Requested-With': 'XMLHttpRequest',
+
+        'Referer': host + '/?ranking'
+
+      },
+
+      credentials: 'include',
+
+      body: formData.toString()
+
+    });
+
+    const html = await res.text();
+
+    log('接口返回长度: ' + html.length);
+
+    if (html.length < 50) {
+
+      log('⚠️ 返回内容过短，可能被拦截或 token 失效');
+
+      log('返回内容: ' + html);
+
+      return;
+
+    }
+
+    // 解析
+
+    const parser = new DOMParser();
+
+    const doc = parser.parseFromString(html, 'text/html');
+
+    const items = doc.querySelectorAll('.art_li');
+
+    log('解析到 .art_li 数量: ' + items.length);
+
+    let count = 0;
+
+    items.forEach(item => {
+
+      const a = item.querySelector('.item_link') || item.querySelector('a');
+
+      const img = item.querySelector('img');
+
+      if (!a) return;
+
+      const href = a.getAttribute('href');
+
+      const pic = img ? img.getAttribute('src') : '';
+
+      const name = a.getAttribute('data-id') || href;
+
+      const div = document.createElement('div');
+
+      div.className = 'item';
+
+      div.innerHTML = `
+
+        <img src="${pic}" onerror="this.style.display='none'">
+
+        <p><b>${name}</b></p>
+
+        <p><a href="${host}${href}" target="_blank">${href}</a></p>
+
+      `;
+
+      document.getElementById('list').appendChild(div);
+
+      count++;
+
+    });
+
+    log('✅ 最终解析到 ' + count + ' 个影片');
+
+  } catch (e) {
+
+    log('❌ 请求列表异常: ' + e);
+
+  }
+
+}
+
+// 页面加载后自动加载一次
+
+window.onload = () => loadList('ranking','24','p6');
+
+</script>
+
+</body>
+
+</html>
