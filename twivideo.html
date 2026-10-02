@@ -6,51 +6,411 @@
 
   <meta charset="utf-8">
 
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+  <meta name="theme-color" content="#101419">
 
   <title>TWIVIDEO</title>
 
+  <script>
+
+    window.WEBHOME_PAGE_OPENED_AT = Date.now();
+
+    if (window.fongmiBridge || window.fm || window.fongmi) document.documentElement.classList.add("fm-native");
+
+  </script>
+
   <style>
 
-    body{margin:0;background:#303840;color:#f4f7fb;font-family:sans-serif;padding:12px}
+    :root {
 
-    .search{display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:10px}
+      color-scheme: dark;
 
-    .field,.btn{min-height:42px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(34,43,51,.42);color:#f4f7fb;padding:0 12px;font-size:14px}
+      --panel-rgb: 76, 88, 98;
 
-    .chips{display:flex;gap:8px;overflow-x:auto;padding:5px 0}
+      --panel: rgba(var(--panel-rgb), .58);
 
-    .chip{flex:0 0 auto;min-height:36px;padding:0 14px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(34,43,51,.42);color:rgba(226,234,242,.72);font-size:13px}
+      --panel-soft: rgba(var(--panel-rgb), .44);
 
-    .chip.active{background:rgba(48,61,70,.58);color:#f4f7fb}
+      --panel-strong: rgba(var(--panel-rgb), .82);
 
-    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+      --control: rgba(34, 43, 51, .42);
 
-    .card{border-radius:8px;overflow:hidden;background:rgba(76,88,98,.58);border:1px solid rgba(255,255,255,.2);text-align:left;padding:0;cursor:pointer}
+      --control-active: rgba(48, 61, 70, .58);
 
-    .thumb{aspect-ratio:2/3;background:rgba(20,24,28,.5);display:grid;place-items:center;color:rgba(255,255,255,.3);font-size:20px;font-weight:900}
+      --text: #f4f7fb;
 
-    .thumb img{width:100%;height:100%;object-fit:cover}
+      --muted: rgba(226, 234, 242, .72);
 
-    .card-body{padding:7px;font-size:12px;font-weight:760;line-height:1.25}
+      --line: rgba(255, 255, 255, .2);
 
-    .empty{grid-column:1/-1;text-align:center;padding:40px 20px;color:rgba(226,234,242,.72);border:1px dashed rgba(255,255,255,.22);border-radius:8px}
+      --line-strong: rgba(255, 255, 255, .34);
 
-    .sheet{position:fixed;inset:0;z-index:40;display:none;background:#303840;padding:12px;overflow:auto}
+      --focus-line: rgba(168, 218, 255, .72);
 
-    .sheet.active{display:block}
+      --focus-line-soft: rgba(168, 218, 255, .42);
 
-    .detail-card{display:grid;grid-template-columns:112px 1fr;gap:14px;padding:12px;background:rgba(76,88,98,.58);border-radius:8px;border:1px solid rgba(255,255,255,.2)}
+      --focus-glow: rgba(96, 165, 250, .24);
 
-    .poster{width:112px;aspect-ratio:2/3;border-radius:8px;overflow:hidden;background:rgba(0,0,0,.2)}
+      --radius: 8px;
 
-    .poster img{width:100%;height:100%;object-fit:cover}
+      --fm-web-height: 100dvh;
 
-    .detail-title{margin:0 0 10px;font-size:18px;font-weight:880}
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
 
-    .toast{position:fixed;left:12px;right:12px;bottom:14px;z-index:80;display:none;padding:10px 12px;background:rgba(76,88,98,.82);border-radius:8px;border:1px solid rgba(255,255,255,.2);font-size:13px}
+    }
 
-    .toast.show{display:block}
+    * { box-sizing: border-box; }
+
+    html, body {
+
+      margin: 0; width: 100%; min-height: var(--fm-web-height);
+
+      background: transparent; color: var(--text); overflow-x: hidden;
+
+    }
+
+    html:not(.fm-native), html:not(.fm-native) body {
+
+      background-color: #303840;
+
+      background-image:
+
+        linear-gradient(45deg, rgba(255,255,255,.07) 25%, transparent 25%),
+
+        linear-gradient(-45deg, rgba(255,255,255,.07) 25%, transparent 25%),
+
+        linear-gradient(45deg, transparent 75%, rgba(255,255,255,.07) 75%),
+
+        linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.07) 75%);
+
+      background-position: 0 0, 0 16px, 16px -16px, -16px 0;
+
+      background-size: 32px 32px;
+
+    }
+
+    body { letter-spacing: 0; overscroll-behavior-x: none; }
+
+    body.detail-active .app { visibility: hidden; pointer-events: none; }
+
+    button, input { font: inherit; color: inherit; }
+
+    button {
+
+      border: 0; margin: 0; padding: 0; appearance: none; -webkit-appearance: none;
+
+      background: transparent; cursor: pointer; text-align: inherit; touch-action: manipulation;
+
+    }
+
+    img { display: block; max-width: 100%; background: rgba(0,0,0,.12); }
+
+    .app {
+
+      min-height: var(--fm-web-height);
+
+      padding: max(12px, env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom));
+
+      background: transparent;
+
+    }
+
+    .topbar { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; min-height: 42px; margin-bottom: 10px; padding: 0; }
+
+    h1 { margin: 0; font-size: 17px; line-height: 1.15; font-weight: 880; letter-spacing: 0; }
+
+    .sub { margin-top: 3px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .icon { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+    .icon-btn, .btn, .chip, .field {
+
+      border-radius: var(--radius); background: var(--control); border: 1px solid var(--line);
+
+      color: var(--text); backdrop-filter: blur(12px) saturate(1.05);
+
+    }
+
+    .icon-btn {
+
+      width: 42px; height: 42px; display: grid; place-items: center;
+
+      transition: background .16s ease, border-color .16s ease, transform .16s ease;
+
+    }
+
+    .icon-btn.is-active { background: var(--control-active); border-color: var(--line-strong); }
+
+    .btn {
+
+      min-height: 42px; display: inline-flex; align-items: center; justify-content: center;
+
+      gap: 7px; padding: 0 14px; font-size: 14px; font-weight: 760; text-decoration: none;
+
+    }
+
+    .btn.primary { background: var(--control-active); border-color: var(--line-strong); }
+
+    .search {
+
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px;
+
+      min-width: 0; margin: 0; position: relative; z-index: 20;
+
+    }
+
+    .field {
+
+      width: 100%; min-width: 0; min-height: 42px; padding: 0 12px; outline: none;
+
+      font-size: 14px; background: var(--control);
+
+    }
+
+    .search .icon-btn { width: 42px; height: 42px; background: var(--control-active); border-color: var(--line-strong); }
+
+    .chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 5px; scrollbar-width: none; }
+
+    .chips::-webkit-scrollbar { display: none; }
+
+    .chip {
+
+      flex: 0 0 auto; min-height: 36px; display: inline-flex; align-items: center; justify-content: center;
+
+      padding: 0 14px; color: var(--muted); font-size: 13px; font-weight: 760; white-space: nowrap;
+
+    }
+
+    .chip.active { background: var(--control-active); border-color: var(--line-strong); color: var(--text); }
+
+    .status {
+
+      min-height: 38px; display: none; align-items: center; gap: 8px; margin-top: 10px;
+
+      padding: 8px 10px; border-radius: var(--radius); background: var(--panel-soft);
+
+      border: 1px solid var(--line); color: var(--muted); font-size: 13px;
+
+    }
+
+    .status.show { display: flex; }
+
+    .spinner {
+
+      width: 15px; height: 15px; border-radius: 50%;
+
+      border: 2px solid rgba(255,255,255,.16); border-top-color: rgba(255,255,255,.76);
+
+      animation: spin .85s linear infinite;
+
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .grid {
+
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+
+      gap: 10px; margin-top: 12px; min-height: 180px;
+
+    }
+
+    .card {
+
+      min-width: 0; border-radius: var(--radius); overflow: hidden;
+
+      background: var(--panel-soft); border: 1px solid var(--line);
+
+      color: var(--text); text-align: left;
+
+    }
+
+    .thumb { position: relative; aspect-ratio: 2 / 3; overflow: hidden; background: rgba(20, 24, 28, .5); }
+
+    .thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+    .thumb.fallback { display: grid; place-items: center; padding: 8px; text-align: center; }
+
+    .thumb.fallback span { color: rgba(255,255,255,.28); font-size: 20px; font-weight: 900; line-height: 1.1; word-break: break-word; }
+
+    .badge {
+
+      position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px);
+
+      padding: 3px 6px; border-radius: 6px; background: rgba(0,0,0,.52);
+
+      border: 1px solid rgba(255,255,255,.16); font-size: 11px; font-weight: 820;
+
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+
+    }
+
+    .card-body { min-height: 50px; padding: 7px; background: var(--panel); }
+
+    .title {
+
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+
+      overflow: hidden; font-size: 12px; font-weight: 760; line-height: 1.25; word-break: break-word;
+
+    }
+
+    .meta { margin-top: 4px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .empty {
+
+      grid-column: 1 / -1; min-height: 120px; display: grid; place-items: center;
+
+      padding: 18px; border-radius: var(--radius); border: 1px dashed rgba(255,255,255,.22);
+
+      background: var(--panel-soft); color: var(--muted); text-align: center;
+
+    }
+
+    .more { width: 100%; margin-top: 12px; display: none; }
+
+    .more.show { display: inline-flex; }
+
+    .sheet {
+
+      position: fixed; inset: 0; z-index: 40; display: none; background: transparent;
+
+      padding: max(12px, env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom)); overflow: auto;
+
+    }
+
+    .sheet.active { display: block; }
+
+    .detail { min-height: calc(var(--fm-web-height) - 30px); display: grid; grid-template-rows: auto 1fr; gap: 14px; }
+
+    .detail-head { display: flex; align-items: center; gap: 10px; }
+
+    .detail-head .brand { min-height: 42px; }
+
+    .detail-card {
+
+      display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 14px;
+
+      align-content: start; padding: 12px; border-radius: var(--radius);
+
+      background: var(--panel-soft); border: 1px solid var(--line);
+
+      position: relative; overflow: hidden;
+
+    }
+
+    .detail-card::before {
+
+      content: ""; position: absolute; inset: 0;
+
+      background:
+
+        linear-gradient(135deg, rgba(255,255,255,.08), transparent 42%),
+
+        linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.18));
+
+      pointer-events: none;
+
+    }
+
+    .detail-card > * { position: relative; }
+
+    .poster {
+
+      width: 112px; aspect-ratio: 2 / 3; border-radius: var(--radius); overflow: hidden;
+
+      background: rgba(0,0,0,.2); border: 1px solid rgba(255,255,255,.12);
+
+      box-shadow: 0 14px 34px rgba(0,0,0,.26);
+
+    }
+
+    .poster img { width: 100%; height: 100%; object-fit: cover; }
+
+    .detail-title { margin: 0; font-size: 18px; line-height: 1.22; font-weight: 880; word-break: break-word; }
+
+    .detail-summary { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+
+    .detail-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+
+    .detail-tag {
+
+      min-height: 26px; display: inline-flex; align-items: center; padding: 0 9px;
+
+      border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+
+      color: var(--muted); font-size: 11px; font-weight: 720;
+
+    }
+
+    .detail-extra { grid-column: 1 / -1; display: grid; gap: 10px; margin-top: 2px; }
+
+    .detail-section {
+
+      padding: 11px; border-radius: var(--radius);
+
+      background: rgba(18, 24, 30, .24); border: 1px solid rgba(255,255,255,.12);
+
+    }
+
+    .detail-section-title { margin-bottom: 7px; color: var(--text); font-size: 12px; font-weight: 820; }
+
+    .detail-section-text { color: var(--muted); font-size: 13px; line-height: 1.6; word-break: break-word; }
+
+    .detail-section-text p { margin: 0; }
+
+    .detail-section-text p + p { margin-top: 7px; }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: auto; padding-top: 12px; }
+
+    .actions .btn.primary { min-width: 112px; background: rgba(245, 249, 252, .2); border-color: var(--line-strong); }
+
+    .toast {
+
+      position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom));
+
+      z-index: 80; display: none; min-height: 42px; align-items: center; padding: 10px 12px;
+
+      border-radius: var(--radius); background: var(--panel-strong); border: 1px solid var(--line);
+
+      color: var(--text); font-size: 13px; box-shadow: 0 14px 34px rgba(0,0,0,.3);
+
+    }
+
+    .toast.show { display: flex; }
+
+    .focusable:focus, button:focus, input:focus {
+
+      outline: none; border-color: var(--focus-line);
+
+      box-shadow: 0 0 0 1px var(--focus-line-soft), 0 10px 24px rgba(0,0,0,.24), 0 0 18px var(--focus-glow);
+
+    }
+
+    .card:focus { transform: translateY(-1px); }
+
+    @media (min-width: 560px) {
+
+      .app, .sheet { padding-left: 18px; padding-right: 18px; }
+
+      .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+
+    }
+
+    @media (min-width: 900px) {
+
+      .grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+      .detail-card { grid-template-columns: 170px minmax(0, 1fr); gap: 18px; padding: 16px; }
+
+      .poster { width: 170px; }
+
+      .detail-title { font-size: 24px; }
+
+      .detail-extra { grid-column: 2; }
+
+    }
 
   </style>
 
@@ -58,35 +418,63 @@
 
 <body>
 
-  <main>
+  <main class="app" id="app">
 
-    <form class="search" id="searchForm" autocomplete="off">
+    <header class="topbar">
 
-      <input class="field" id="searchInput" type="search" placeholder="検索キーワード">
+      <form class="search" id="searchForm" autocomplete="off">
 
-      <button class="btn" type="submit">搜索</button>
+        <input class="field focusable" id="searchInput" type="search" placeholder="検索キーワード" readonly>
 
-    </form>
+        <button class="icon-btn focusable" type="submit" aria-label="搜索" title="搜索">
 
-    <nav class="chips" id="chips"></nav>
+          <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
 
-    <section class="grid" id="grid"></section>
+        </button>
 
-    <button class="btn" id="moreBtn" style="display:none;width:100%;margin-top:12px">加载更多</button>
+      </form>
+
+    </header>
+
+    <nav class="chips" id="chips" aria-label="分类"></nav>
+
+    <div class="status" id="status"><span class="spinner"></span><span id="statusText">加载中</span></div>
+
+    <section class="grid" id="grid" aria-live="polite"></section>
+
+    <button class="btn more focusable" id="moreBtn" type="button">加载更多</button>
 
   </main>
 
-  <section class="sheet" id="detailSheet">
+  <section class="sheet" id="detailSheet" aria-hidden="true">
 
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px">
+    <div class="detail">
 
-      <button class="btn" id="closeDetailBtn">← 返回</button>
+      <div class="detail-head">
 
-      <strong>详情</strong>
+        <button class="icon-btn focusable" id="closeDetailBtn" type="button" aria-label="返回" title="返回">
+
+          <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+
+        </button>
+
+        <div class="brand">
+
+          <div>
+
+            <h1>详情</h1>
+
+            <div class="sub" id="detailSub">TWIVIDEO</div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <div id="detailBody"></div>
 
     </div>
-
-    <div id="detailBody"></div>
 
   </section>
 
@@ -94,193 +482,772 @@
 
   <script>
 
-    (function() {
+    (function () {
 
       "use strict";
 
       var HOST = "https://twivideo.net";
 
-      var CATS = [["ranking|24|p6","ランキング(24時間)"],["0|post_date|p4","新着DL"],["ranking|72|p6","ランキング(3日間)"],["ranking|168|p6","ランキング(1週間)"],["trending|r_count|p7","急上昇"],["likeranking|24|p6","高評価"]];
+      var CATS = [
 
-      var state = { cat: CATS[0][0], page: 1, items: [], busy: false, hasMore: false, token: "" };
+        ["ranking|24|p6", "ランキング(24時間)"],
 
-      function $(id){ return document.getElementById(id); }
+        ["0|post_date|p4", "新着DL"],
 
-      function escapeHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+        ["ranking|72|p6", "ランキング(3日間)"],
 
-      function toast(msg){ var t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(function(){t.classList.remove("show")},2400); }
+        ["ranking|168|p6", "ランキング(1週間)"],
 
-      function renderChips(){
+        ["trending|r_count|p7", "急上昇"],
 
-        $("chips").innerHTML = CATS.map(function(c){
+        ["likeranking|24|p6", "高評価"]
 
-          return '<button class="chip'+(c[0]===state.cat?" active":"")+'" data-cat="'+c[0]+'">'+c[1]+'</button>';
+      ];
 
-        }).join("");
+      var state = {
 
-      }
+        cat: "ranking|24|p6",
 
-      function renderList(){
+        key: "", page: 1, items: [], busy: false,
 
-        if(!state.items.length && !state.busy){ $("grid").innerHTML='<div class="empty">没有找到内容</div>'; return; }
+        hasMore: false, detail: null, focusKey: "", scrollY: 0,
 
-        $("grid").innerHTML = state.items.map(function(item){
+        sdkReady: false, token: ""
 
-          var bg = 'linear-gradient(135deg,hsl('+(String(item.id).length*37%360)+',36%,18%),hsl('+((String(item.id).length*37+58)%360)+',32%,12%))';
+      };
 
-          return '<button class="card" data-id="'+escapeHtml(item.id)+'">'+
+      var nativeSdkWait = null;
 
-            '<div class="thumb" style="background:'+bg+'">'+(item.pic?'<img src="'+escapeHtml(item.pic)+'" referrerpolicy="no-referrer" onerror="this.remove()">':'<span>'+escapeHtml(item.title)+'</span>')+'</div>'+
+      var toastTimer = 0;
 
-            '<div class="card-body">'+escapeHtml(item.title)+'</div></button>';
+      function $(id) { return document.getElementById(id); }
 
-        }).join("");
+      function escapeHtml(value) {
 
-        $("moreBtn").style.display = state.hasMore && !state.busy ? "block" : "none";
+        return String(value == null ? "" : value)
 
-      }
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 
-      function getToken(){
-
-        if(state.token) return Promise.resolve(state.token);
-
-        return fetch(HOST+"/templates/ajax_view_token.php",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","X-Requested-With":"XMLHttpRequest","Referer":HOST+"/?ranking"},body:""}).then(function(r){return r.text()}).then(function(t){
-
-          var m=t.match(/"token"\s*:\s*"([^"]+)"/); if(m){state.token=m[1]; return state.token;} return "";
-
-        }).catch(function(){return ""});
+          .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
       }
 
-      function loadList(reset){
+      function escapeAttr(value) { return escapeHtml(value).replace(/`/g, "&#96;"); }
 
-        if(state.busy) return;
+      function absoluteUrl(url) {
 
-        if(reset){state.page=1;state.items=[];state.hasMore=false;window.scrollTo(0,0);}
+        var text = String(url || "").trim();
 
-        state.busy=true;
+        if (!text) return "";
 
-        var parts=state.cat.split("|");
+        if (/^\/\//.test(text)) return "https:" + text;
 
-        var offset=(state.page-1)*50;
+        if (/^https?:\/\//i.test(text)) return text;
 
-        getToken().then(function(){
+        if (text.charAt(0) === "/") return HOST + text;
 
-          var params="offset="+offset+"&limit=50&tag=null&type="+encodeURIComponent(parts[0])+"&order="+encodeURIComponent(parts[1])+"&le=1000&ty="+encodeURIComponent(parts[2])+"&myarray=[]&offset_int="+offset+"&view_token="+encodeURIComponent(state.token||"");
+        return HOST + "/" + text.replace(/^\.?\//, "");
 
-          return fetch(HOST+"/templates/view_lists.php",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","X-Requested-With":"XMLHttpRequest","Referer":HOST+"/?ranking"},body:params});
+      }
 
-        }).then(function(r){return r.text()}).then(function(html){
+      function waitForNativeSdk(timeout) {
 
-          var doc=new DOMParser().parseFromString(html,"text/html");
+        if (window.fm || !window.fongmiBridge) return Promise.resolve(!!window.fm);
 
-          var nodes=doc.querySelectorAll("li.art_li,div.art_li");
+        if (nativeSdkWait) return nativeSdkWait;
 
-          var seen={};
+        nativeSdkWait = new Promise(function (resolve) {
 
-          state.items.forEach(function(i){seen[i.id]=true});
+          var done = false;
 
-          var count=0;
+          function finish() {
 
-          nodes.forEach(function(n){
+            if (done) return; done = true;
 
-            var a=n.querySelector("a"); if(!a) return;
+            window.removeEventListener("fmsdk", finish);
 
-            var href=a.getAttribute("href"); if(!href||seen[href]) return;
+            nativeSdkWait = null;
 
-            seen[href]=true;
+            resolve(!!window.fm);
 
-            var img=n.querySelector("img");
+          }
 
-            var pic=img?(img.getAttribute("data-src")||img.getAttribute("src")):"";
+          window.addEventListener("fmsdk", finish);
 
-            if(pic && pic.startsWith("/")) pic=HOST+pic;
+          setTimeout(finish, timeout == null ? 1800 : timeout);
 
-            var name=a.getAttribute("data-id")||(img&&img.getAttribute("alt"))||href.split("/").pop();
+        });
 
-            state.items.push({id:href,title:name,pic:pic});
+        return nativeSdkWait;
 
-            count++;
+      }
+
+      function sdk() {
+
+        if (window.fm) return window.fm;
+
+        return {
+
+          req: browserRequest,
+
+          play: function (url) { window.open(url, "_blank", "noopener,noreferrer"); return Promise.resolve({}); },
+
+          search: function (keyword) { toast("搜索：" + keyword); return Promise.resolve({}); },
+
+          cache: {
+
+            get: function (key) { return Promise.resolve(localStorage.getItem("fm_" + key) || ""); },
+
+            set: function (key, value) { localStorage.setItem("fm_" + key, value); return Promise.resolve({}); },
+
+            del: function (key) { localStorage.removeItem("fm_" + key); return Promise.resolve({}); }
+
+          },
+
+          back: function () { history.back(); return Promise.resolve({}); }
+
+        };
+
+      }
+
+      function browserRequest(url, options) {
+
+        options = options || {};
+
+        return fetch(url, {
+
+          method: options.method || "GET",
+
+          headers: options.headers || {},
+
+          body: options.body || undefined,
+
+          credentials: options.credentials === "include" ? "include" : "same-origin"
+
+        }).then(function (resp) {
+
+          return resp.text().then(function (text) {
+
+            return { ok: resp.ok, status: resp.status, url: resp.url, headers: {}, cookies: [], body: text };
 
           });
 
-          state.hasMore=count>=12;
+        }).catch(function (error) {
 
-          state.busy=false;
-
-          renderList();
-
-        }).catch(function(e){
-
-          state.busy=false;
-
-          toast("加载失败:"+e.message);
-
-          renderList();
+          return { ok: false, status: 500, url: url, headers: {}, cookies: [], body: "", error: String(error && error.message || error) };
 
         });
 
       }
 
-      function openDetail(id){
+      function getToken() {
 
-        var item=state.items.find(function(i){return i.id===id})||{id:id,title:id,pic:""};
+        return waitForNativeSdk(1800).then(function () {
 
-        $("detailBody").innerHTML='<div class="empty">加载详情...</div>';
+          return sdk().req(HOST + "/templates/ajax_view_token.php", {
+
+            method: "POST",
+
+            headers: {
+
+              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+
+              "X-Requested-With": "XMLHttpRequest",
+
+              "Referer": HOST + "/?ranking"
+
+            },
+
+            body: "", timeout: 20, credentials: "include"
+
+          });
+
+        }).then(function (resp) {
+
+          var text = (resp && resp.body) || "";
+
+          if (!text) return "";
+
+          var m = text.match(/"token"\s*:\s*"([^"]+)"/);
+
+          if (m) { state.token = m[1]; return state.token; }
+
+          try {
+
+            var j = JSON.parse(text);
+
+            if (j && j.token) { state.token = j.token; return state.token; }
+
+          } catch (e) {}
+
+          return "";
+
+        });
+
+      }
+
+      function requestList(type, order, ty, offset) {
+
+        return waitForNativeSdk(1800).then(function () {
+
+          var params = "offset=" + encodeURIComponent(offset)
+
+            + "&limit=" + encodeURIComponent(50)
+
+            + "&tag=" + encodeURIComponent("null")
+
+            + "&type=" + encodeURIComponent(type)
+
+            + "&order=" + encodeURIComponent(order)
+
+            + "&le=" + encodeURIComponent(1000)
+
+            + "&ty=" + encodeURIComponent(ty)
+
+            + "&myarray=" + encodeURIComponent("[]")
+
+            + "&offset_int=" + encodeURIComponent(offset)
+
+            + "&view_token=" + encodeURIComponent(state.token || "");
+
+          return sdk().req(HOST + "/templates/view_lists.php", {
+
+            method: "POST",
+
+            headers: {
+
+              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+
+              "X-Requested-With": "XMLHttpRequest",
+
+              "Referer": HOST + "/?ranking"
+
+            },
+
+            body: params, timeout: 30, credentials: "include"
+
+          });
+
+        }).then(function (resp) {
+
+          if (!resp || !resp.ok || !resp.body) throw new Error(resp && resp.error || ("HTTP " + (resp && resp.status || 500)));
+
+          return String(resp.body);
+
+        });
+
+      }
+
+      function parseList(html) {
+
+        var doc = new DOMParser().parseFromString(html, "text/html");
+
+        var nodes = Array.prototype.slice.call(doc.querySelectorAll("li.art_li, div.art_li"));
+
+        var items = [];
+
+        var seen = {};
+
+        nodes.forEach(function (node) {
+
+          var a = node.querySelector("a.item_link") || node.querySelector("a");
+
+          if (!a) return;
+
+          var href = a.getAttribute("href") || "";
+
+          if (!href || seen[href]) return;
+
+          seen[href] = true;
+
+          var img = node.querySelector("img");
+
+          var pic = img ? absoluteUrl(img.getAttribute("data-src") || img.getAttribute("src") || "") : "";
+
+          var name = a.getAttribute("data-id") || (img && img.getAttribute("alt")) || "";
+
+          if (!name) {
+
+            var m = href.match(/\/([^\/\?]+)(?:\?|$)/);
+
+            name = m ? decodeURIComponent(m[1]) : href;
+
+          }
+
+          items.push({ id: href, title: name, pic: pic, remark: "" });
+
+        });
+
+        return items;
+
+      }
+
+      function setStatus(text, loading) {
+
+        $("statusText").textContent = text || "";
+
+        $("status").classList.toggle("show", !!text);
+
+        $("status").querySelector(".spinner").style.display = loading ? "" : "none";
+
+      }
+
+      function toast(text) {
+
+        clearTimeout(toastTimer);
+
+        $("toast").textContent = text;
+
+        $("toast").classList.add("show");
+
+        toastTimer = setTimeout(function () { $("toast").classList.remove("show"); }, 2400);
+
+      }
+
+      function renderChips() {
+
+        $("chips").innerHTML = CATS.map(function (item) {
+
+          return '<button class="chip focusable' + (item[0] === state.cat && !state.key ? " active" : "") + '" type="button" data-cat="' + escapeAttr(item[0]) + '">' + escapeHtml(item[1]) + '</button>';
+
+        }).join("");
+
+      }
+
+      function renderList(options) {
+
+        options = options || {};
+
+        if (!state.items.length && !state.busy) {
+
+          $("grid").innerHTML = '<div class="empty">没有找到内容</div>';
+
+        } else {
+
+          $("grid").innerHTML = state.items.map(renderCard).join("");
+
+        }
+
+        $("moreBtn").classList.toggle("show", !!state.hasMore && !state.busy);
+
+        if (options.focus) restoreListFocus();
+
+      }
+
+      function renderCard(item) {
+
+        var poster = item.pic ? '<img src="' + escapeAttr(item.pic) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add(\'fallback\');this.remove();">' : "";
+
+        var fallback = poster ? "" : '<span>' + escapeHtml(item.title || item.id) + '</span>';
+
+        return '<button class="card focusable" type="button" data-id="' + escapeAttr(item.id) + '" data-key="vod-' + escapeAttr(item.id) + '">' +
+
+          '<div class="thumb' + (poster ? "" : " fallback") + '" style="background:' + posterGradient(item.id) + '">' + poster + fallback + '<div class="badge">' + escapeHtml(item.title || item.id) + '</div></div>' +
+
+          '<div class="card-body"><div class="title">' + escapeHtml(item.title || item.id) + '</div><div class="meta">TWIVIDEO</div></div>' +
+
+          '</button>';
+
+      }
+
+      function posterGradient(id) {
+
+        var hue = Math.abs(String(id).length * 37) % 360;
+
+        return "linear-gradient(135deg,hsl(" + hue + ",36%,18%),hsl(" + ((hue + 58) % 360) + ",32%,12%))";
+
+      }
+
+      function loadList(reset) {
+
+        if (state.busy) return Promise.resolve();
+
+        if (reset) { state.page = 1; state.items = []; state.hasMore = false; window.scrollTo(0, 0); }
+
+        state.busy = true;
+
+        setStatus("加载中", true);
+
+        renderList();
+
+        var parts = state.cat.split("|");
+
+        var offset = (state.page - 1) * 50;
+
+        var task = state.token ? Promise.resolve(state.token) : getToken();
+
+        return task.then(function () {
+
+          return requestList(parts[0], parts[1], parts[2], offset);
+
+        }).then(function (html) {
+
+          var next = parseList(html);
+
+          if (reset) state.items = [];
+
+          var known = {};
+
+          state.items.forEach(function (item) { known[item.id] = true; });
+
+          next.forEach(function (item) { if (!known[item.id]) state.items.push(item); });
+
+          state.hasMore = next.length >= 12;
+
+          setStatus("", false);
+
+        }).catch(function (error) {
+
+          setStatus("", false);
+
+          if (reset && !state.items.length) $("grid").innerHTML = '<div class="empty">加载失败：' + escapeHtml(error.message || error) + '</div>';
+
+          toast("加载失败：" + (error.message || error));
+
+        }).then(function () {
+
+          state.busy = false;
+
+          renderList({ focus: true });
+
+        });
+
+      }
+
+      function loadMore() {
+
+        if (state.busy || !state.hasMore) return;
+
+        state.page += 1;
+
+        loadList(false);
+
+      }
+
+      function switchCat(cat) {
+
+        state.cat = cat; state.key = "";
+
+        $("searchInput").value = "";
+
+        renderChips();
+
+        loadList(true);
+
+      }
+
+      function doSearch(keyword) {
+
+        keyword = String(keyword || "").trim();
+
+        if (!keyword) return;
+
+        toast("搜索功能需结合原生搜索实现");
+
+      }
+
+      function openDetail(id) {
+
+        var item = state.items.find(function (it) { return it.id === id; }) || { id: id, title: id, pic: "" };
+
+        state.detail = { loading: true, item: item };
+
+        renderDetail();
+
+        showDetail();
+
+        requestText(HOST + id).then(function (html) {
+
+          var url = parsePlayUrl(html);
+
+          state.detail = { item: item, url: url };
+
+          renderDetail();
+
+        }).catch(function (error) {
+
+          state.detail = { item: item, error: String(error) };
+
+          renderDetail();
+
+        });
+
+      }
+
+      function requestText(url) {
+
+        return waitForNativeSdk(1800).then(function () {
+
+          return sdk().req(url, { headers: { "Referer": HOST + "/" }, timeout: 30, credentials: "include" });
+
+        }).then(function (resp) {
+
+          if (!resp || !resp.ok || !resp.body) throw new Error(resp && resp.error || ("HTTP " + (resp && resp.status || 500)));
+
+          return String(resp.body);
+
+        });
+
+      }
+
+      function parsePlayUrl(html) {
+
+        var m = html.match(/(https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*)/i)
+
+          || html.match(/(https?:\/\/[^"'\s<>]+?\.mp4[^"'\s<>]*)/i)
+
+          || html.match(/source\s+src=["']([^"']+)["']/i)
+
+          || html.match(/<video[^>]+src=["']([^"']+)["']/i);
+
+        if (m && m[1]) {
+
+          var u = m[1];
+
+          if (u.indexOf("//") === 0) u = "https:" + u;
+
+          return u;
+
+        }
+
+        return "";
+
+      }
+
+      function showDetail() {
+
+        document.body.classList.add("detail-active");
 
         $("detailSheet").classList.add("active");
 
-        document.body.style.overflow="hidden";
+        $("detailSheet").setAttribute("aria-hidden", "false");
 
-        fetch(HOST+id,{headers:{"Referer":HOST+"/"}}).then(function(r){return r.text()}).then(function(html){
+        setTimeout(function () { focusRemoteTarget($("closeDetailBtn")); }, 40);
 
-          var m=html.match(/(https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*)/i)||html.match(/(https?:\/\/[^"'\s<>]+?\.mp4[^"'\s<>]*)/i)||html.match(/source\s+src=["']([^"']+)["']/i);
+      }
 
-          var url=m?m[1]:"";
+      function closeDetail() {
 
-          if(url.startsWith("//")) url="https:"+url;
+        document.body.classList.remove("detail-active");
 
-          $("detailBody").innerHTML='<div class="detail-card">'+
+        $("detailSheet").classList.remove("active");
 
-            '<div class="poster">'+(item.pic?'<img src="'+escapeHtml(item.pic)+'" referrerpolicy="no-referrer">':'')+'</div>'+
+        $("detailSheet").setAttribute("aria-hidden", "true");
 
-            '<div><h2 class="detail-title">'+escapeHtml(item.title)+'</h2>'+
+        state.detail = null;
 
-            (url?'<div style="margin-top:12px"><button class="btn" onclick="window.open(\''+url+'\',\'_blank\')">▶ 播放</button></div>':'<div style="color:rgba(226,234,242,.72)">未找到播放地址</div>')+
+        requestAnimationFrame(restoreListFocus);
 
-            '</div></div>';
+      }
 
-        }).catch(function(e){
+      function renderDetail() {
 
-          $("detailBody").innerHTML='<div class="empty">加载失败:'+e.message+'</div>';
+        var detail = state.detail || {};
+
+        var item = detail.item || {};
+
+        $("detailSub").textContent = "TWIVIDEO";
+
+        if (detail.loading) {
+
+          $("detailBody").innerHTML = '<div class="empty"><span class="spinner"></span>&nbsp;加载详情</div>';
+
+          return;
+
+        }
+
+        if (detail.error) {
+
+          $("detailBody").innerHTML = '<div class="empty">详情加载失败：' + escapeHtml(detail.error) + '</div>';
+
+          return;
+
+        }
+
+        var title = item.title || item.id;
+
+        var poster = item.pic || "";
+
+        var posterHtml = poster ? '<img src="' + escapeAttr(poster) + '" alt="" referrerpolicy="no-referrer" onerror="this.remove();">' : "";
+
+        var playButton = detail.url ? '<button class="btn primary focusable" id="playBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>播放</button>' : "";
+
+        $("detailBody").innerHTML =
+
+          '<article class="detail-card">' +
+
+          '<div class="poster" style="background:' + posterGradient(item.id) + '">' + posterHtml + '</div>' +
+
+          '<div class="detail-summary"><h2 class="detail-title">' + escapeHtml(title) + '</h2>' +
+
+          '<div class="detail-tags"><span class="detail-tag">TWIVIDEO</span></div>' +
+
+          '<div class="actions">' + playButton + '</div>' +
+
+          '</div></article>';
+
+      }
+
+      function playDetail() {
+
+        var detail = state.detail || {};
+
+        if (!detail.url) { toast("没有播放地址"); return; }
+
+        var title = detail.item && detail.item.title || "TWIVIDEO";
+
+        waitForNativeSdk(1500).then(function () {
+
+          return sdk().play(detail.url, title);
+
+        }).catch(function (error) {
+
+          toast("播放失败：" + (error.message || error));
 
         });
 
       }
 
-      function closeDetail(){
+      function focusRemoteTarget(target) {
 
-        $("detailSheet").classList.remove("active");
+        if (!target) return;
 
-        document.body.style.overflow="";
+        try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
+
+        var rect = target.getBoundingClientRect();
+
+        if (rect.top < 12 || rect.bottom > window.innerHeight - 18) target.scrollIntoView({ block: "nearest", inline: "nearest" });
 
       }
-            $("chips").addEventListener("click",function(e){
-        var btn=e.target.closest("[data-cat]");
-        if(btn){ state.cat=btn.getAttribute("data-cat"); renderChips(); loadList(true); }
-      });
-      $("grid").addEventListener("click",function(e){
-        var card=e.target.closest(".card");
-        if(card) openDetail(card.getAttribute("data-id"));
-      });
-      $("moreBtn").addEventListener("click",function(){ state.page++; loadList(false); });
-      $("closeDetailBtn").addEventListener("click",closeDetail);
-      $("searchForm").addEventListener("submit",function(e){ e.preventDefault(); toast("搜索功能需TVBox原生支持"); });
-      renderChips();
-      loadList(true);
+
+      function isVisibleFocusable(el) {
+
+        if (!el || !el.matches || !el.matches(".focusable,button,input")) return false;
+
+        if (el.disabled || el.getAttribute("tabindex") === "-1") return false;
+
+        if (el.closest("[aria-hidden='true']")) return false;
+
+        var rect = el.getBoundingClientRect();
+
+        return rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== "hidden";
+
+      }
+
+      function focusScopeRoot() {
+
+        if ($("detailSheet").classList.contains("active")) return $("detailSheet");
+
+        return $("app");
+
+      }
+
+      function restoreListFocus() {
+
+        if ($("detailSheet").classList.contains("active")) return;
+
+        var target = null;
+
+        if (state.focusKey) target = document.querySelector('[data-key="' + state.focusKey.replace(/"/g, '\\"') + '"]');
+
+        if (!target) target = document.querySelector(".chip.active") || document.querySelector(".card") || $("searchInput");
+
+        if (target && isVisibleFocusable(target)) focusRemoteTarget(target);
+
+      }
+
+      function bindEvents() {
+
+        $("chips").addEventListener("click", function (event) {
+
+          var btn = event.target.closest("button[data-cat]");
+
+          if (!btn) return;
+
+          switchCat(btn.getAttribute("data-cat"));
+
+        });
+
+        $("grid").addEventListener("click", function (event) {
+
+          var card = event.target.closest("button.card");
+
+          if (!card) return;
+
+          var id = card.getAttribute("data-id");
+
+          state.focusKey = card.getAttribute("data-key") || "";
+
+          state.scrollY = window.scrollY || 0;
+
+          openDetail(id);
+
+        });
+
+        $("moreBtn").addEventListener("click", loadMore);
+
+        $("searchForm").addEventListener("submit", function (event) {
+
+          event.preventDefault();
+
+          doSearch($("searchInput").value);
+
+        });
+
+        $("closeDetailBtn").addEventListener("click", closeDetail);
+
+        $("detailBody").addEventListener("click", function (event) {
+
+          var btn = event.target.closest("#playBtn");
+
+          if (btn) playDetail();
+
+        });
+
+        document.addEventListener("keydown", function (event) {
+
+          if (event.key === "Escape" && $("detailSheet").classList.contains("active")) {
+
+            event.preventDefault();
+
+            closeDetail();
+
+          }
+
+        });
+
+        window.addEventListener("keydown", function (event) {
+
+          if (!$("detailSheet").classList.contains("active")) return;
+
+          if (event.key === "Backspace" || event.key === "GoBack") {
+
+            event.preventDefault();
+
+            closeDetail();
+
+          }
+
+        });
+
+      }
+
+      function init() {
+
+        renderChips();
+
+        bindEvents();
+
+        loadList(true);
+
+      }
+
+      init();
+
     })();
+
   </script>
+
 </body>
+
 </html>
-
-
