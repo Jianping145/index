@@ -858,7 +858,7 @@
 
       }
 
-      function loadList(reset) {
+            function loadList(reset) {
 
         if (state.busy) return Promise.resolve();
 
@@ -874,13 +874,43 @@
 
         var offset = (state.page - 1) * 50;
 
-        var task = state.token ? Promise.resolve(state.token) : getToken();
+        // 使用 TVBox 原生请求，绕过浏览器跨域限制
 
-        return task.then(function () {
+        var url = HOST + "/templates/view_lists.php";
 
-          return requestList(parts[0], parts[1], parts[2], offset);
+        var params = "offset=" + offset + "&limit=50&tag=null&type=" + encodeURIComponent(parts[0]) + "&order=" + encodeURIComponent(parts[1]) + "&le=1000&ty=" + encodeURIComponent(parts[2]) + "&myarray=[]&offset_int=" + offset + "&view_token=" + encodeURIComponent(state.token || "");
 
-        }).then(function (html) {
+        
+
+        var req = window.fm ? window.fm.req : fetch;
+
+        var options = {
+
+          method: "POST",
+
+          headers: {
+
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+
+            "X-Requested-With": "XMLHttpRequest",
+
+            "Referer": HOST + "/?ranking"
+
+          },
+
+          body: params
+
+        };
+
+        (window.fm ? req(url, options) : fetch(url, options).then(function(r){return r.text()}))
+
+        .then(function(resp) {
+
+          var html = typeof resp === 'string' ? resp : (resp.body || "");
+
+          if (!html) throw new Error("Empty response");
+
+          
 
           var next = parseList(html);
 
