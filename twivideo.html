@@ -1,249 +1,286 @@
-<!DOCTYPE html>
+<!doctype html>
 
 <html lang="zh-CN">
 
 <head>
 
-<meta charset="UTF-8">
+  <meta charset="utf-8">
 
-<title>TWIVIDEO 接口测试</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<style>
+  <title>TWIVIDEO</title>
 
-  body { font-family: sans-serif; margin: 20px; }
+  <style>
 
-  .item { display: inline-block; width: 180px; margin: 10px; vertical-align: top; }
+    body{margin:0;background:#303840;color:#f4f7fb;font-family:sans-serif;padding:12px}
 
-  .item img { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; }
+    .search{display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:10px}
 
-  .item p { font-size: 13px; margin: 5px 0; word-break: break-all; }
+    .field,.btn{min-height:42px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(34,43,51,.42);color:#f4f7fb;padding:0 12px;font-size:14px}
 
-  #log { background: #f5f5f5; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; max-height: 300px; overflow: auto; }
+    .chips{display:flex;gap:8px;overflow-x:auto;padding:5px 0}
 
-</style>
+    .chip{flex:0 0 auto;min-height:36px;padding:0 14px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(34,43,51,.42);color:rgba(226,234,242,.72);font-size:13px}
+
+    .chip.active{background:rgba(48,61,70,.58);color:#f4f7fb}
+
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+
+    .card{border-radius:8px;overflow:hidden;background:rgba(76,88,98,.58);border:1px solid rgba(255,255,255,.2);text-align:left;padding:0;cursor:pointer}
+
+    .thumb{aspect-ratio:2/3;background:rgba(20,24,28,.5);display:grid;place-items:center;color:rgba(255,255,255,.3);font-size:20px;font-weight:900}
+
+    .thumb img{width:100%;height:100%;object-fit:cover}
+
+    .card-body{padding:7px;font-size:12px;font-weight:760;line-height:1.25}
+
+    .empty{grid-column:1/-1;text-align:center;padding:40px 20px;color:rgba(226,234,242,.72);border:1px dashed rgba(255,255,255,.22);border-radius:8px}
+
+    .sheet{position:fixed;inset:0;z-index:40;display:none;background:#303840;padding:12px;overflow:auto}
+
+    .sheet.active{display:block}
+
+    .detail-card{display:grid;grid-template-columns:112px 1fr;gap:14px;padding:12px;background:rgba(76,88,98,.58);border-radius:8px;border:1px solid rgba(255,255,255,.2)}
+
+    .poster{width:112px;aspect-ratio:2/3;border-radius:8px;overflow:hidden;background:rgba(0,0,0,.2)}
+
+    .poster img{width:100%;height:100%;object-fit:cover}
+
+    .detail-title{margin:0 0 10px;font-size:18px;font-weight:880}
+
+    .toast{position:fixed;left:12px;right:12px;bottom:14px;z-index:80;display:none;padding:10px 12px;background:rgba(76,88,98,.82);border-radius:8px;border:1px solid rgba(255,255,255,.2);font-size:13px}
+
+    .toast.show{display:block}
+
+  </style>
 
 </head>
 
 <body>
 
-<h2>TWIVIDEO 影片列表测试</h2>
+  <main>
 
-<div>
+    <form class="search" id="searchForm" autocomplete="off">
 
-  <button onclick="loadList('ranking','24','p6')">ランキング(24時間)</button>
+      <input class="field" id="searchInput" type="search" placeholder="検索キーワード">
 
-  <button onclick="loadList('0','post_date','p4')">新着DL</button>
+      <button class="btn" type="submit">搜索</button>
 
-  <button onclick="loadList('trending','r_count','p7')">急上昇</button>
+    </form>
 
-  <button onclick="loadList('likeranking','24','p6')">高評価</button>
+    <nav class="chips" id="chips"></nav>
 
-</div>
+    <section class="grid" id="grid"></section>
 
-<br>
+    <button class="btn" id="moreBtn" style="display:none;width:100%;margin-top:12px">加载更多</button>
 
-<div id="list"></div>
+  </main>
 
-<hr>
+  <section class="sheet" id="detailSheet">
 
-<h3>日志</h3>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px">
 
-<div id="log"></div>
+      <button class="btn" id="closeDetailBtn">← 返回</button>
 
-<script>
+      <strong>详情</strong>
 
-const host = 'https://twivideo.net';
+    </div>
 
-let viewToken = '';
+    <div id="detailBody"></div>
 
-function log(msg) {
+  </section>
 
-  document.getElementById('log').textContent += msg + '\n';
+  <div class="toast" id="toast"></div>
 
-}
+  <script>
 
-// 获取 token
+    (function() {
 
-async function getToken() {
+      "use strict";
 
-  try {
+      var HOST = "https://twivideo.net";
 
-    log('正在获取 view_token...');
+      var CATS = [["ranking|24|p6","ランキング(24時間)"],["0|post_date|p4","新着DL"],["ranking|72|p6","ランキング(3日間)"],["ranking|168|p6","ランキング(1週間)"],["trending|r_count|p7","急上昇"],["likeranking|24|p6","高評価"]];
 
-    const res = await fetch(host + '/templates/ajax_view_token.php', {
+      var state = { cat: CATS[0][0], page: 1, items: [], busy: false, hasMore: false, token: "" };
 
-      method: 'POST',
+      function $(id){ return document.getElementById(id); }
 
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      function escapeHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
-      credentials: 'include'
+      function toast(msg){ var t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(function(){t.classList.remove("show")},2400); }
 
-    });
+      function renderChips(){
 
-    const data = await res.json();
+        $("chips").innerHTML = CATS.map(function(c){
 
-    if (data && data.token) {
+          return '<button class="chip'+(c[0]===state.cat?" active":"")+'" data-cat="'+c[0]+'">'+c[1]+'</button>';
 
-      viewToken = data.token;
+        }).join("");
 
-      log('✅ token 获取成功: ' + viewToken);
+      }
 
-      return true;
+      function renderList(){
 
-    }
+        if(!state.items.length && !state.busy){ $("grid").innerHTML='<div class="empty">没有找到内容</div>'; return; }
 
-    log('❌ token 获取失败，返回: ' + JSON.stringify(data));
+        $("grid").innerHTML = state.items.map(function(item){
 
-    return false;
+          var bg = 'linear-gradient(135deg,hsl('+(String(item.id).length*37%360)+',36%,18%),hsl('+((String(item.id).length*37+58)%360)+',32%,12%))';
 
-  } catch (e) {
+          return '<button class="card" data-id="'+escapeHtml(item.id)+'">'+
 
-    log('❌ 获取 token 异常: ' + e);
+            '<div class="thumb" style="background:'+bg+'">'+(item.pic?'<img src="'+escapeHtml(item.pic)+'" referrerpolicy="no-referrer" onerror="this.remove()">':'<span>'+escapeHtml(item.title)+'</span>')+'</div>'+
 
-    return false;
+            '<div class="card-body">'+escapeHtml(item.title)+'</div></button>';
 
-  }
+        }).join("");
 
-}
+        $("moreBtn").style.display = state.hasMore && !state.busy ? "block" : "none";
 
-// 加载列表
+      }
 
-async function loadList(type, order, ty) {
+      function getToken(){
 
-  document.getElementById('list').innerHTML = '';
+        if(state.token) return Promise.resolve(state.token);
 
-  document.getElementById('log').textContent = '';
+        return fetch(HOST+"/templates/ajax_view_token.php",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","X-Requested-With":"XMLHttpRequest","Referer":HOST+"/?ranking"},body:""}).then(function(r){return r.text()}).then(function(t){
 
-  if (!viewToken) {
+          var m=t.match(/"token"\s*:\s*"([^"]+)"/); if(m){state.token=m[1]; return state.token;} return "";
 
-    const ok = await getToken();
+        }).catch(function(){return ""});
 
-    if (!ok) return;
+      }
 
-  }
+      function loadList(reset){
 
-  const formData = new URLSearchParams();
+        if(state.busy) return;
 
-  formData.append('offset', '0');
+        if(reset){state.page=1;state.items=[];state.hasMore=false;window.scrollTo(0,0);}
 
-  formData.append('limit', '50');
+        state.busy=true;
 
-  formData.append('tag', 'null');
+        var parts=state.cat.split("|");
 
-  formData.append('type', type);
+        var offset=(state.page-1)*50;
 
-  formData.append('order', order);
+        getToken().then(function(){
 
-  formData.append('le', '1000');
+          var params="offset="+offset+"&limit=50&tag=null&type="+encodeURIComponent(parts[0])+"&order="+encodeURIComponent(parts[1])+"&le=1000&ty="+encodeURIComponent(parts[2])+"&myarray=[]&offset_int="+offset+"&view_token="+encodeURIComponent(state.token||"");
 
-  formData.append('ty', ty);
+          return fetch(HOST+"/templates/view_lists.php",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","X-Requested-With":"XMLHttpRequest","Referer":HOST+"/?ranking"},body:params});
 
-  formData.append('myarray', '[]');
+        }).then(function(r){return r.text()}).then(function(html){
 
-  formData.append('offset_int', '0');
+          var doc=new DOMParser().parseFromString(html,"text/html");
 
-  formData.append('view_token', viewToken);
+          var nodes=doc.querySelectorAll("li.art_li,div.art_li");
 
-  try {
+          var seen={};
 
-    log('正在请求列表接口...');
+          state.items.forEach(function(i){seen[i.id]=true});
 
-    const res = await fetch(host + '/templates/view_lists.php', {
+          var count=0;
 
-      method: 'POST',
+          nodes.forEach(function(n){
 
-      headers: {
+            var a=n.querySelector("a"); if(!a) return;
 
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            var href=a.getAttribute("href"); if(!href||seen[href]) return;
 
-        'X-Requested-With': 'XMLHttpRequest',
+            seen[href]=true;
 
-        'Referer': host + '/?ranking'
+            var img=n.querySelector("img");
 
-      },
+            var pic=img?(img.getAttribute("data-src")||img.getAttribute("src")):"";
 
-      credentials: 'include',
+            if(pic && pic.startsWith("/")) pic=HOST+pic;
 
-      body: formData.toString()
+            var name=a.getAttribute("data-id")||(img&&img.getAttribute("alt"))||href.split("/").pop();
 
-    });
+            state.items.push({id:href,title:name,pic:pic});
 
-    const html = await res.text();
+            count++;
 
-    log('接口返回长度: ' + html.length);
+          });
 
-    if (html.length < 50) {
+          state.hasMore=count>=12;
 
-      log('⚠️ 返回内容过短，可能被拦截或 token 失效');
+          state.busy=false;
 
-      log('返回内容: ' + html);
+          renderList();
 
-      return;
+        }).catch(function(e){
 
-    }
+          state.busy=false;
 
-    // 解析
+          toast("加载失败:"+e.message);
 
-    const parser = new DOMParser();
+          renderList();
 
-    const doc = parser.parseFromString(html, 'text/html');
+        });
 
-    const items = doc.querySelectorAll('.art_li');
+      }
 
-    log('解析到 .art_li 数量: ' + items.length);
+      function openDetail(id){
 
-    let count = 0;
+        var item=state.items.find(function(i){return i.id===id})||{id:id,title:id,pic:""};
 
-    items.forEach(item => {
+        $("detailBody").innerHTML='<div class="empty">加载详情...</div>';
 
-      const a = item.querySelector('.item_link') || item.querySelector('a');
+        $("detailSheet").classList.add("active");
 
-      const img = item.querySelector('img');
+        document.body.style.overflow="hidden";
 
-      if (!a) return;
+        fetch(HOST+id,{headers:{"Referer":HOST+"/"}}).then(function(r){return r.text()}).then(function(html){
 
-      const href = a.getAttribute('href');
+          var m=html.match(/(https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*)/i)||html.match(/(https?:\/\/[^"'\s<>]+?\.mp4[^"'\s<>]*)/i)||html.match(/source\s+src=["']([^"']+)["']/i);
 
-      const pic = img ? img.getAttribute('src') : '';
+          var url=m?m[1]:"";
 
-      const name = a.getAttribute('data-id') || href;
+          if(url.startsWith("//")) url="https:"+url;
 
-      const div = document.createElement('div');
+          $("detailBody").innerHTML='<div class="detail-card">'+
 
-      div.className = 'item';
+            '<div class="poster">'+(item.pic?'<img src="'+escapeHtml(item.pic)+'" referrerpolicy="no-referrer">':'')+'</div>'+
 
-      div.innerHTML = `
+            '<div><h2 class="detail-title">'+escapeHtml(item.title)+'</h2>'+
 
-        <img src="${pic}" onerror="this.style.display='none'">
+            (url?'<div style="margin-top:12px"><button class="btn" onclick="window.open(\''+url+'\',\'_blank\')">▶ 播放</button></div>':'<div style="color:rgba(226,234,242,.72)">未找到播放地址</div>')+
 
-        <p><b>${name}</b></p>
+            '</div></div>';
 
-        <p><a href="${host}${href}" target="_blank">${href}</a></p>
+        }).catch(function(e){
 
-      `;
+          $("detailBody").innerHTML='<div class="empty">加载失败:'+e.message+'</div>';
 
-      document.getElementById('list').appendChild(div);
+        });
 
-      count++;
+      }
 
-    });
+      function closeDetail(){
 
-    log('✅ 最终解析到 ' + count + ' 个影片');
+        $("detailSheet").classList.remove("active");
 
-  } catch (e) {
+        document.body.style.overflow="";
 
-    log('❌ 请求列表异常: ' + e);
-
-  }
-
-}
-
-// 页面加载后自动加载一次
-
-window.onload = () => loadList('ranking','24','p6');
-
-</script>
-
+      }
+            $("chips").addEventListener("click",function(e){
+        var btn=e.target.closest("[data-cat]");
+        if(btn){ state.cat=btn.getAttribute("data-cat"); renderChips(); loadList(true); }
+      });
+      $("grid").addEventListener("click",function(e){
+        var card=e.target.closest(".card");
+        if(card) openDetail(card.getAttribute("data-id"));
+      });
+      $("moreBtn").addEventListener("click",function(){ state.page++; loadList(false); });
+      $("closeDetailBtn").addEventListener("click",closeDetail);
+      $("searchForm").addEventListener("submit",function(e){ e.preventDefault(); toast("搜索功能需TVBox原生支持"); });
+      renderChips();
+      loadList(true);
+    })();
+  </script>
 </body>
-
 </html>
+
+
