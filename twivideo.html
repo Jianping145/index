@@ -4,1279 +4,673 @@
 
 <head>
 
-  <meta charset="utf-8">
+<meta charset="utf-8">
 
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
-  <meta name="theme-color" content="#101419">
+<title>TWIVIDEO</title>
 
-  <title>TWIVIDEO</title>
+<style>
 
-  <script>
+:root{color-scheme:dark;--panel:rgba(76,88,98,.58);--panel-soft:rgba(76,88,98,.44);--control:rgba(34,43,51,.42);--control-active:rgba(48,61,70,.58);--text:#f4f7fb;--muted:rgba(226,234,242,.72);--line:rgba(255,255,255,.2);--radius:8px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
 
-    window.WEBHOME_PAGE_OPENED_AT = Date.now();
+*{box-sizing:border-box}
 
-    if (window.fongmiBridge || window.fm || window.fongmi) document.documentElement.classList.add("fm-native");
+html,body{margin:0;width:100%;min-height:100dvh;background:#303840;color:var(--text);overflow-x:hidden}
 
-  </script>
+body{overscroll-behavior-x:none}
 
-  <style>
+body.detail-active .app{visibility:hidden;pointer-events:none}
 
-    :root {
+button,input{font:inherit;color:inherit}
 
-      color-scheme: dark;
+button{border:0;margin:0;padding:0;background:transparent;cursor:pointer;text-align:inherit}
 
-      --panel-rgb: 76, 88, 98;
+img{display:block;max-width:100%;background:rgba(0,0,0,.12)}
 
-      --panel: rgba(var(--panel-rgb), .58);
+.app{min-height:100dvh;padding:max(12px,env(safe-area-inset-top)) 12px calc(18px+env(safe-area-inset-bottom))}
 
-      --panel-soft: rgba(var(--panel-rgb), .44);
+.topbar{min-height:42px;margin-bottom:10px}
 
-      --panel-strong: rgba(var(--panel-rgb), .82);
+h1{margin:0;font-size:17px;font-weight:800}
 
-      --control: rgba(34, 43, 51, .42);
+.sub{margin-top:3px;font-size:12px;color:var(--muted)}
 
-      --control-active: rgba(48, 61, 70, .58);
+.icon{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 
-      --text: #f4f7fb;
+.icon-btn,.btn,.chip,.field{border-radius:var(--radius);background:var(--control);border:1px solid var(--line);color:var(--text)}
 
-      --muted: rgba(226, 234, 242, .72);
+.icon-btn{width:42px;height:42px;display:grid;place-items:center}
 
-      --line: rgba(255, 255, 255, .2);
+.btn{min-height:42px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 14px;font-size:14px;font-weight:700}
 
-      --line-strong: rgba(255, 255, 255, .34);
+.btn.primary{background:var(--control-active)}
 
-      --focus-line: rgba(168, 218, 255, .72);
+.search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}
 
-      --focus-line-soft: rgba(168, 218, 255, .42);
+.field{width:100%;min-height:42px;padding:0 12px;outline:none;font-size:14px;background:var(--control)}
 
-      --focus-glow: rgba(96, 165, 250, .24);
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 5px;scrollbar-width:none}
 
-      --radius: 8px;
+.chips::-webkit-scrollbar{display:none}
 
-      --fm-web-height: 100dvh;
+.chip{flex:0 0 auto;min-height:36px;display:inline-flex;align-items:center;padding:0 14px;color:var(--muted);font-size:13px;font-weight:700;white-space:nowrap}
 
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+.chip.active{background:var(--control-active);color:var(--text)}
 
-    }
+.status{min-height:38px;display:none;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border-radius:var(--radius);background:var(--panel-soft);border:1px solid var(--line);color:var(--muted);font-size:13px}
 
-    * { box-sizing: border-box; }
+.status.show{display:flex}
 
-    html, body {
+.spinner{width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,.16);border-top-color:rgba(255,255,255,.76);animation:spin .85s linear infinite}
 
-      margin: 0; width: 100%; min-height: var(--fm-web-height);
+@keyframes spin{to{transform:rotate(360deg)}}
 
-      background: transparent; color: var(--text); overflow-x: hidden;
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px;min-height:180px}
 
-    }
+.card{min-width:0;border-radius:var(--radius);overflow:hidden;background:var(--panel-soft);border:1px solid var(--line);color:var(--text);text-align:left}
 
-    html:not(.fm-native), html:not(.fm-native) body {
+.thumb{position:relative;aspect-ratio:2/3;overflow:hidden;background:rgba(20,24,28,.5)}
 
-      background-color: #303840;
+.thumb img{width:100%;height:100%;object-fit:cover}
 
-      background-image:
+.thumb.fallback{display:grid;place-items:center;padding:8px;text-align:center}
 
-        linear-gradient(45deg, rgba(255,255,255,.07) 25%, transparent 25%),
+.thumb.fallback span{color:rgba(255,255,255,.28);font-size:20px;font-weight:900;word-break:break-word}
 
-        linear-gradient(-45deg, rgba(255,255,255,.07) 25%, transparent 25%),
+.badge{position:absolute;left:6px;bottom:6px;max-width:calc(100% - 12px);padding:3px 6px;border-radius:6px;background:rgba(0,0,0,.52);border:1px solid rgba(255,255,255,.16);font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-        linear-gradient(45deg, transparent 75%, rgba(255,255,255,.07) 75%),
+.card-body{min-height:50px;padding:7px;background:var(--panel)}
 
-        linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.07) 75%);
+.title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;font-weight:700;line-height:1.25;word-break:break-word}
 
-      background-position: 0 0, 0 16px, 16px -16px, -16px 0;
+.meta{margin-top:4px;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-      background-size: 32px 32px;
+.empty{grid-column:1/-1;min-height:120px;display:grid;place-items:center;padding:18px;border-radius:var(--radius);border:1px dashed rgba(255,255,255,.22);background:var(--panel-soft);color:var(--muted);text-align:center}
 
-    }
+.more{width:100%;margin-top:12px;display:none}
 
-    body { letter-spacing: 0; overscroll-behavior-x: none; }
+.more.show{display:inline-flex}
 
-    body.detail-active .app { visibility: hidden; pointer-events: none; }
+.sheet{position:fixed;inset:0;z-index:40;display:none;background:#303840;padding:max(12px,env(safe-area-inset-top)) 12px calc(18px+env(safe-area-inset-bottom));overflow:auto}
 
-    button, input { font: inherit; color: inherit; }
+.sheet.active{display:block}
 
-    button {
+.detail-head{display:flex;align-items:center;gap:10px}
 
-      border: 0; margin: 0; padding: 0; appearance: none; -webkit-appearance: none;
+.detail-card{display:grid;grid-template-columns:112px minmax(0,1fr);gap:14px;padding:12px;border-radius:var(--radius);background:var(--panel-soft);border:1px solid var(--line)}
 
-      background: transparent; cursor: pointer; text-align: inherit; touch-action: manipulation;
+.poster{width:112px;aspect-ratio:2/3;border-radius:var(--radius);overflow:hidden;background:rgba(0,0,0,.2)}
 
-    }
+.poster img{width:100%;height:100%;object-fit:cover}
 
-    img { display: block; max-width: 100%; background: rgba(0,0,0,.12); }
+.detail-title{margin:0;font-size:18px;font-weight:800;word-break:break-word}
 
-    .app {
+.detail-tag{min-height:26px;display:inline-flex;align-items:center;padding:0 9px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:var(--muted);font-size:11px;font-weight:700}
 
-      min-height: var(--fm-web-height);
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
 
-      padding: max(12px, env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom));
+.toast{position:fixed;left:12px;right:12px;bottom:calc(14px+env(safe-area-inset-bottom));z-index:80;display:none;min-height:42px;align-items:center;padding:10px 12px;border-radius:var(--radius);background:rgba(76,88,98,.9);border:1px solid var(--line);color:var(--text);font-size:13px}
 
-      background: transparent;
+.toast.show{display:flex}
 
-    }
+.focusable:focus,button:focus,input:focus{outline:none;border-color:rgba(168,218,255,.72);box-shadow:0 0 0 1px rgba(168,218,255,.42),0 0 18px rgba(96,165,250,.24)}
 
-    .topbar { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; min-height: 42px; margin-bottom: 10px; padding: 0; }
+@media(min-width:560px){.app,.sheet{padding-left:18px;padding-right:18px}.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 
-    h1 { margin: 0; font-size: 17px; line-height: 1.15; font-weight: 880; letter-spacing: 0; }
+@media(min-width:900px){.grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
 
-    .sub { margin-top: 3px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-    .icon { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-
-    .icon-btn, .btn, .chip, .field {
-
-      border-radius: var(--radius); background: var(--control); border: 1px solid var(--line);
-
-      color: var(--text); backdrop-filter: blur(12px) saturate(1.05);
-
-    }
-
-    .icon-btn {
-
-      width: 42px; height: 42px; display: grid; place-items: center;
-
-      transition: background .16s ease, border-color .16s ease, transform .16s ease;
-
-    }
-
-    .icon-btn.is-active { background: var(--control-active); border-color: var(--line-strong); }
-
-    .btn {
-
-      min-height: 42px; display: inline-flex; align-items: center; justify-content: center;
-
-      gap: 7px; padding: 0 14px; font-size: 14px; font-weight: 760; text-decoration: none;
-
-    }
-
-    .btn.primary { background: var(--control-active); border-color: var(--line-strong); }
-
-    .search {
-
-      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px;
-
-      min-width: 0; margin: 0; position: relative; z-index: 20;
-
-    }
-
-    .field {
-
-      width: 100%; min-width: 0; min-height: 42px; padding: 0 12px; outline: none;
-
-      font-size: 14px; background: var(--control);
-
-    }
-
-    .search .icon-btn { width: 42px; height: 42px; background: var(--control-active); border-color: var(--line-strong); }
-
-    .chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 5px; scrollbar-width: none; }
-
-    .chips::-webkit-scrollbar { display: none; }
-
-    .chip {
-
-      flex: 0 0 auto; min-height: 36px; display: inline-flex; align-items: center; justify-content: center;
-
-      padding: 0 14px; color: var(--muted); font-size: 13px; font-weight: 760; white-space: nowrap;
-
-    }
-
-    .chip.active { background: var(--control-active); border-color: var(--line-strong); color: var(--text); }
-
-    .status {
-
-      min-height: 38px; display: none; align-items: center; gap: 8px; margin-top: 10px;
-
-      padding: 8px 10px; border-radius: var(--radius); background: var(--panel-soft);
-
-      border: 1px solid var(--line); color: var(--muted); font-size: 13px;
-
-    }
-
-    .status.show { display: flex; }
-
-    .spinner {
-
-      width: 15px; height: 15px; border-radius: 50%;
-
-      border: 2px solid rgba(255,255,255,.16); border-top-color: rgba(255,255,255,.76);
-
-      animation: spin .85s linear infinite;
-
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .grid {
-
-      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-
-      gap: 10px; margin-top: 12px; min-height: 180px;
-
-    }
-
-    .card {
-
-      min-width: 0; border-radius: var(--radius); overflow: hidden;
-
-      background: var(--panel-soft); border: 1px solid var(--line);
-
-      color: var(--text); text-align: left;
-
-    }
-
-    .thumb { position: relative; aspect-ratio: 2 / 3; overflow: hidden; background: rgba(20, 24, 28, .5); }
-
-    .thumb img { width: 100%; height: 100%; object-fit: cover; }
-
-    .thumb.fallback { display: grid; place-items: center; padding: 8px; text-align: center; }
-
-    .thumb.fallback span { color: rgba(255,255,255,.28); font-size: 20px; font-weight: 900; line-height: 1.1; word-break: break-word; }
-
-    .badge {
-
-      position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px);
-
-      padding: 3px 6px; border-radius: 6px; background: rgba(0,0,0,.52);
-
-      border: 1px solid rgba(255,255,255,.16); font-size: 11px; font-weight: 820;
-
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-
-    }
-
-    .card-body { min-height: 50px; padding: 7px; background: var(--panel); }
-
-    .title {
-
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-
-      overflow: hidden; font-size: 12px; font-weight: 760; line-height: 1.25; word-break: break-word;
-
-    }
-
-    .meta { margin-top: 4px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-    .empty {
-
-      grid-column: 1 / -1; min-height: 120px; display: grid; place-items: center;
-
-      padding: 18px; border-radius: var(--radius); border: 1px dashed rgba(255,255,255,.22);
-
-      background: var(--panel-soft); color: var(--muted); text-align: center;
-
-    }
-
-    .more { width: 100%; margin-top: 12px; display: none; }
-
-    .more.show { display: inline-flex; }
-
-    .sheet {
-
-      position: fixed; inset: 0; z-index: 40; display: none; background: transparent;
-
-      padding: max(12px, env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom)); overflow: auto;
-
-    }
-
-    .sheet.active { display: block; }
-
-    .detail { min-height: calc(var(--fm-web-height) - 30px); display: grid; grid-template-rows: auto 1fr; gap: 14px; }
-
-    .detail-head { display: flex; align-items: center; gap: 10px; }
-
-    .detail-head .brand { min-height: 42px; }
-
-    .detail-card {
-
-      display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 14px;
-
-      align-content: start; padding: 12px; border-radius: var(--radius);
-
-      background: var(--panel-soft); border: 1px solid var(--line);
-
-      position: relative; overflow: hidden;
-
-    }
-
-    .detail-card::before {
-
-      content: ""; position: absolute; inset: 0;
-
-      background:
-
-        linear-gradient(135deg, rgba(255,255,255,.08), transparent 42%),
-
-        linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.18));
-
-      pointer-events: none;
-
-    }
-
-    .detail-card > * { position: relative; }
-
-    .poster {
-
-      width: 112px; aspect-ratio: 2 / 3; border-radius: var(--radius); overflow: hidden;
-
-      background: rgba(0,0,0,.2); border: 1px solid rgba(255,255,255,.12);
-
-      box-shadow: 0 14px 34px rgba(0,0,0,.26);
-
-    }
-
-    .poster img { width: 100%; height: 100%; object-fit: cover; }
-
-    .detail-title { margin: 0; font-size: 18px; line-height: 1.22; font-weight: 880; word-break: break-word; }
-
-    .detail-summary { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
-
-    .detail-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
-
-    .detail-tag {
-
-      min-height: 26px; display: inline-flex; align-items: center; padding: 0 9px;
-
-      border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
-
-      color: var(--muted); font-size: 11px; font-weight: 720;
-
-    }
-
-    .detail-extra { grid-column: 1 / -1; display: grid; gap: 10px; margin-top: 2px; }
-
-    .detail-section {
-
-      padding: 11px; border-radius: var(--radius);
-
-      background: rgba(18, 24, 30, .24); border: 1px solid rgba(255,255,255,.12);
-
-    }
-
-    .detail-section-title { margin-bottom: 7px; color: var(--text); font-size: 12px; font-weight: 820; }
-
-    .detail-section-text { color: var(--muted); font-size: 13px; line-height: 1.6; word-break: break-word; }
-
-    .detail-section-text p { margin: 0; }
-
-    .detail-section-text p + p { margin-top: 7px; }
-
-    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: auto; padding-top: 12px; }
-
-    .actions .btn.primary { min-width: 112px; background: rgba(245, 249, 252, .2); border-color: var(--line-strong); }
-
-    .toast {
-
-      position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom));
-
-      z-index: 80; display: none; min-height: 42px; align-items: center; padding: 10px 12px;
-
-      border-radius: var(--radius); background: var(--panel-strong); border: 1px solid var(--line);
-
-      color: var(--text); font-size: 13px; box-shadow: 0 14px 34px rgba(0,0,0,.3);
-
-    }
-
-    .toast.show { display: flex; }
-
-    .focusable:focus, button:focus, input:focus {
-
-      outline: none; border-color: var(--focus-line);
-
-      box-shadow: 0 0 0 1px var(--focus-line-soft), 0 10px 24px rgba(0,0,0,.24), 0 0 18px var(--focus-glow);
-
-    }
-
-    .card:focus { transform: translateY(-1px); }
-
-    @media (min-width: 560px) {
-
-      .app, .sheet { padding-left: 18px; padding-right: 18px; }
-
-      .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-
-    }
-
-    @media (min-width: 900px) {
-
-      .grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-
-      .detail-card { grid-template-columns: 170px minmax(0, 1fr); gap: 18px; padding: 16px; }
-
-      .poster { width: 170px; }
-
-      .detail-title { font-size: 24px; }
-
-      .detail-extra { grid-column: 2; }
-
-    }
-
-  </style>
+</style>
 
 </head>
 
 <body>
 
-  <main class="app" id="app">
+<main class="app" id="app">
 
-    <header class="topbar">
+  <header class="topbar">
 
-      <form class="search" id="searchForm" autocomplete="off">
+    <form class="search" id="searchForm" autocomplete="off">
 
-        <input class="field focusable" id="searchInput" type="search" placeholder="検索キーワード" readonly>
+      <input class="field focusable" id="searchInput" type="search" placeholder="検索キーワード" readonly>
 
-        <button class="icon-btn focusable" type="submit" aria-label="搜索" title="搜索">
+      <button class="icon-btn focusable" type="submit"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
 
-          <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    </form>
 
-        </button>
+  </header>
 
-      </form>
+  <nav class="chips" id="chips"></nav>
 
-    </header>
+  <div class="status" id="status"><span class="spinner"></span><span id="statusText">加载中</span></div>
 
-    <nav class="chips" id="chips" aria-label="分类"></nav>
+  <section class="grid" id="grid"></section>
 
-    <div class="status" id="status"><span class="spinner"></span><span id="statusText">加载中</span></div>
+  <button class="btn more focusable" id="moreBtn" type="button">加载更多</button>
 
-    <section class="grid" id="grid" aria-live="polite"></section>
+</main>
 
-    <button class="btn more focusable" id="moreBtn" type="button">加载更多</button>
+<section class="sheet" id="detailSheet" aria-hidden="true">
 
-  </main>
+  <div class="detail">
 
-  <section class="sheet" id="detailSheet" aria-hidden="true">
+    <div class="detail-head">
 
-    <div class="detail">
+      <button class="icon-btn focusable" id="closeDetailBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
 
-      <div class="detail-head">
-
-        <button class="icon-btn focusable" id="closeDetailBtn" type="button" aria-label="返回" title="返回">
-
-          <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
-
-        </button>
-
-        <div class="brand">
-
-          <div>
-
-            <h1>详情</h1>
-
-            <div class="sub" id="detailSub">TWIVIDEO</div>
-
-          </div>
-
-        </div>
-
-      </div>
-
-      <div id="detailBody"></div>
+      <div><h1>详情</h1><div class="sub" id="detailSub">TWIVIDEO</div></div>
 
     </div>
 
-  </section>
+    <div id="detailBody"></div>
 
-  <div class="toast" id="toast"></div>
+  </div>
 
-  <script>
+</section>
 
-    (function () {
+<div class="toast" id="toast"></div>
 
-      "use strict";
+<script>
 
-      var HOST = "https://twivideo.net";
+(function(){
 
-      var CATS = [
+"use strict";
 
-        ["ranking|24|p6", "ランキング(24時間)"],
+var HOST="https://twivideo.net";
 
-        ["0|post_date|p4", "新着DL"],
+var CATS=[
 
-        ["ranking|72|p6", "ランキング(3日間)"],
+  ["ranking|24|p6","ランキング(24時間)"],
 
-        ["ranking|168|p6", "ランキング(1週間)"],
+  ["0|post_date|p4","新着DL"],
 
-        ["trending|r_count|p7", "急上昇"],
+  ["ranking|72|p6","ランキング(3日間)"],
 
-        ["likeranking|24|p6", "高評価"]
+  ["ranking|168|p6","ランキング(1週間)"],
 
-      ];
+  ["trending|r_count|p7","急上昇"],
 
-      var state = {
+  ["likeranking|24|p6","高評価"]
 
-        cat: "ranking|24|p6",
+];
 
-        key: "", page: 1, items: [], busy: false,
+var state={cat:"ranking|24|p6",page:1,items:[],busy:false,hasMore:false,token:"",detail:null,focusKey:""};
 
-        hasMore: false, detail: null, focusKey: "", scrollY: 0,
+var toastTimer=0;
 
-        sdkReady: false, token: ""
+function $(id){return document.getElementById(id);}
 
-      };
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
 
-      var nativeSdkWait = null;
+function absUrl(u){u=String(u||"").trim();if(!u)return"";if(/^\/\//.test(u))return"https:"+u;if(/^https?:\/\//i.test(u))return u;if(u.charAt(0)==="/")return HOST+u;return HOST+"/"+u.replace(/^\.?\//,"");}
 
-      var toastTimer = 0;
+// 统一通过 fm.req 发请求，拿不到 fm 时回退到 fetch
 
-      function $(id) { return document.getElementById(id); }
+function rawReq(url,options){
 
-      function escapeHtml(value) {
+  options=options||{};
 
-        return String(value == null ? "" : value)
+  if(window.fm&&window.fm.req){
 
-          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    return window.fm.req(url,options);
 
-          .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
 
-      }
+  return fetch(url,{
 
-      function escapeAttr(value) { return escapeHtml(value).replace(/`/g, "&#96;"); }
+    method:options.method||"GET",
 
-      function absoluteUrl(url) {
+    headers:options.headers||{},
 
-        var text = String(url || "").trim();
+    body:options.body,
 
-        if (!text) return "";
+    credentials:"include"
 
-        if (/^\/\//.test(text)) return "https:" + text;
+  }).then(function(r){
 
-        if (/^https?:\/\//i.test(text)) return text;
+    return r.text().then(function(t){return{ok:r.ok,status:r.status,body:t};});
 
-        if (text.charAt(0) === "/") return HOST + text;
+  }).catch(function(e){
 
-        return HOST + "/" + text.replace(/^\.?\//, "");
+    return{ok:false,status:500,body:"",error:String(e)};
 
-      }
+  });
 
-      function waitForNativeSdk(timeout) {
+}
 
-        if (window.fm || !window.fongmiBridge) return Promise.resolve(!!window.fm);
+function getToken(){
 
-        if (nativeSdkWait) return nativeSdkWait;
+  return rawReq(HOST+"/templates/ajax_view_token.php",{
 
-        nativeSdkWait = new Promise(function (resolve) {
+    method:"POST",
 
-          var done = false;
+    headers:{
 
-          function finish() {
+      "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8",
 
-            if (done) return; done = true;
+      "X-Requested-With":"XMLHttpRequest",
 
-            window.removeEventListener("fmsdk", finish);
+      "Referer":HOST+"/?ranking"
 
-            nativeSdkWait = null;
+    },
 
-            resolve(!!window.fm);
+    body:"",
 
-          }
+    timeout:20
 
-          window.addEventListener("fmsdk", finish);
+  }).then(function(resp){
 
-          setTimeout(finish, timeout == null ? 1800 : timeout);
+    var text=(resp&&resp.body)||"";
 
-        });
+    if(!text)return"";
 
-        return nativeSdkWait;
+    var m=text.match(/"token"\s*:\s*"([^"]+)"/);
 
-      }
+    if(m){state.token=m[1];return state.token;}
 
-      function sdk() {
+    try{var j=JSON.parse(text);if(j&&j.token){state.token=j.token;return state.token;}}catch(e){}
 
-        if (window.fm) return window.fm;
+    return"";
 
-        return {
+  });
 
-          req: browserRequest,
+}
 
-          play: function (url) { window.open(url, "_blank", "noopener,noreferrer"); return Promise.resolve({}); },
+function requestList(type,order,ty,offset){
 
-          search: function (keyword) { toast("搜索：" + keyword); return Promise.resolve({}); },
+  var params="offset="+encodeURIComponent(offset)
 
-          cache: {
+    +"&limit="+encodeURIComponent(50)
 
-            get: function (key) { return Promise.resolve(localStorage.getItem("fm_" + key) || ""); },
+    +"&tag="+encodeURIComponent("null")
 
-            set: function (key, value) { localStorage.setItem("fm_" + key, value); return Promise.resolve({}); },
+    +"&type="+encodeURIComponent(type)
 
-            del: function (key) { localStorage.removeItem("fm_" + key); return Promise.resolve({}); }
+    +"&order="+encodeURIComponent(order)
 
-          },
+    +"&le="+encodeURIComponent(1000)
 
-          back: function () { history.back(); return Promise.resolve({}); }
+    +"&ty="+encodeURIComponent(ty)
 
-        };
+    +"&myarray="+encodeURIComponent("[]")
 
-      }
+    +"&offset_int="+encodeURIComponent(offset)
 
-      function browserRequest(url, options) {
+    +"&view_token="+encodeURIComponent(state.token||"");
 
-        options = options || {};
+  return rawReq(HOST+"/templates/view_lists.php",{
 
-        return fetch(url, {
+    method:"POST",
 
-          method: options.method || "GET",
+    headers:{
 
-          headers: options.headers || {},
+      "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8",
 
-          body: options.body || undefined,
+      "X-Requested-With":"XMLHttpRequest",
 
-          credentials: options.credentials === "include" ? "include" : "same-origin"
+      "Referer":HOST+"/?ranking"
 
-        }).then(function (resp) {
+    },
 
-          return resp.text().then(function (text) {
+    body:params,
 
-            return { ok: resp.ok, status: resp.status, url: resp.url, headers: {}, cookies: [], body: text };
+    timeout:30
 
-          });
+  }).then(function(resp){
 
-        }).catch(function (error) {
+    if(!resp||!resp.body)throw new Error((resp&&resp.error)||"empty");
 
-          return { ok: false, status: 500, url: url, headers: {}, cookies: [], body: "", error: String(error && error.message || error) };
+    return String(resp.body);
 
-        });
+  });
 
-      }
+}
 
-      function getToken() {
+function parseList(html){
 
-        return waitForNativeSdk(1800).then(function () {
+  var doc=new DOMParser().parseFromString(html,"text/html");
 
-          return sdk().req(HOST + "/templates/ajax_view_token.php", {
+  var nodes=Array.prototype.slice.call(doc.querySelectorAll("li.art_li, div.art_li"));
 
-            method: "POST",
+  var items=[],seen={};
 
-            headers: {
+  nodes.forEach(function(node){
 
-              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    var a=node.querySelector("a.item_link")||node.querySelector("a");
 
-              "X-Requested-With": "XMLHttpRequest",
+    if(!a)return;
 
-              "Referer": HOST + "/?ranking"
+    var href=a.getAttribute("href")||"";
 
-            },
+    if(!href||seen[href])return;
 
-            body: "", timeout: 20, credentials: "include"
+    seen[href]=true;
 
-          });
+    var img=node.querySelector("img");
 
-        }).then(function (resp) {
+    var pic=img?absUrl(img.getAttribute("data-src")||img.getAttribute("src")||""):"";
 
-          var text = (resp && resp.body) || "";
+    var name=a.getAttribute("data-id")||(img&&img.getAttribute("alt"))||"";
 
-          if (!text) return "";
+    if(!name){
 
-          var m = text.match(/"token"\s*:\s*"([^"]+)"/);
+      var m=href.match(/\/([^\/\?]+)(?:\?|$)/);
 
-          if (m) { state.token = m[1]; return state.token; }
+      name=m?decodeURIComponent(m[1]):href;
 
-          try {
+    }
 
-            var j = JSON.parse(text);
+    items.push({id:href,title:name,pic:pic});
 
-            if (j && j.token) { state.token = j.token; return state.token; }
+  });
 
-          } catch (e) {}
+  return items;
 
-          return "";
+}
 
-        });
+function setStatus(text,loading){
 
-      }
+  $("statusText").textContent=text||"";
 
-      function requestList(type, order, ty, offset) {
+  $("status").classList.toggle("show",!!text);
 
-        return waitForNativeSdk(1800).then(function () {
+  $("status").querySelector(".spinner").style.display=loading?"":"none";
 
-          var params = "offset=" + encodeURIComponent(offset)
+}
 
-            + "&limit=" + encodeURIComponent(50)
+function toast(text){
 
-            + "&tag=" + encodeURIComponent("null")
+  clearTimeout(toastTimer);
 
-            + "&type=" + encodeURIComponent(type)
+  $("toast").textContent=text;
 
-            + "&order=" + encodeURIComponent(order)
+  $("toast").classList.add("show");
 
-            + "&le=" + encodeURIComponent(1000)
+  toastTimer=setTimeout(function(){$("toast").classList.remove("show");},2400);
 
-            + "&ty=" + encodeURIComponent(ty)
+}
 
-            + "&myarray=" + encodeURIComponent("[]")
+function renderChips(){
 
-            + "&offset_int=" + encodeURIComponent(offset)
+  $("chips").innerHTML=CATS.map(function(item){
 
-            + "&view_token=" + encodeURIComponent(state.token || "");
+    return '<button class="chip focusable'+(item[0]===state.cat?" active":"")+'" data-cat="'+esc(item[0])+'">'+esc(item[1])+'</button>';
 
-          return sdk().req(HOST + "/templates/view_lists.php", {
+  }).join("");
 
-            method: "POST",
+}
 
-            headers: {
+function posterGradient(id){
 
-              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+  var h=Math.abs(String(id).length*37)%360;
 
-              "X-Requested-With": "XMLHttpRequest",
+  return"linear-gradient(135deg,hsl("+h+",36%,18%),hsl("+((h+58)%360)+",32%,12%))";
 
-              "Referer": HOST + "/?ranking"
+}
 
-            },
+function renderCard(item){
 
-            body: params, timeout: 30, credentials: "include"
+  var poster=item.pic?'<img src="'+esc(item.pic)+'" loading="lazy" onerror="this.parentNode.classList.add(\'fallback\');this.remove();">':"";
 
-          });
+  var fb=poster?"":'<span>'+esc(item.title||item.id)+'</span>';
 
-        }).then(function (resp) {
+  return'<button class="card focusable" data-id="'+esc(item.id)+'" data-key="vod-'+esc(item.id)+'">'
 
-          if (!resp || !resp.ok || !resp.body) throw new Error(resp && resp.error || ("HTTP " + (resp && resp.status || 500)));
+    +'<div class="thumb'+(poster?"":" fallback")+'" style="background:'+posterGradient(item.id)+'">'+poster+fb+'<div class="badge">'+esc(item.title||item.id)+'</div></div>'
 
-          return String(resp.body);
+    +'<div class="card-body"><div class="title">'+esc(item.title||item.id)+'</div><div class="meta">TWIVIDEO</div></div>'
 
-        });
+    +'</button>';
 
-      }
+}
 
-      function parseList(html) {
+function renderList(){
 
-        var doc = new DOMParser().parseFromString(html, "text/html");
+  if(!state.items.length&&!state.busy){
 
-        var nodes = Array.prototype.slice.call(doc.querySelectorAll("li.art_li, div.art_li"));
+    $("grid").innerHTML='<div class="empty">没有找到内容</div>';
 
-        var items = [];
+  }else{
 
-        var seen = {};
+    $("grid").innerHTML=state.items.map(renderCard).join("");
 
-        nodes.forEach(function (node) {
+  }
 
-          var a = node.querySelector("a.item_link") || node.querySelector("a");
+  $("moreBtn").classList.toggle("show",!!state.hasMore&&!state.busy);
 
-          if (!a) return;
+}
 
-          var href = a.getAttribute("href") || "";
+function loadList(reset){
 
-          if (!href || seen[href]) return;
+  if(state.busy)return Promise.resolve();
 
-          seen[href] = true;
+  if(reset){state.page=1;state.items=[];state.hasMore=false;window.scrollTo(0,0);}
 
-          var img = node.querySelector("img");
+  state.busy=true;
 
-          var pic = img ? absoluteUrl(img.getAttribute("data-src") || img.getAttribute("src") || "") : "";
+  setStatus("加载中",true);
 
-          var name = a.getAttribute("data-id") || (img && img.getAttribute("alt")) || "";
+  renderList();
 
-          if (!name) {
+  var parts=state.cat.split("|");
 
-            var m = href.match(/\/([^\/\?]+)(?:\?|$)/);
+  var offset=(state.page-1)*50;
 
-            name = m ? decodeURIComponent(m[1]) : href;
+  var t=state.token?Promise.resolve(state.token):getToken();
 
-          }
+  return t.then(function(){
 
-          items.push({ id: href, title: name, pic: pic, remark: "" });
+    return requestList(parts[0],parts[1],parts[2],offset);
 
-        });
+  }).then(function(html){
 
-        return items;
+    if(html.indexOf("Just a moment")>-1||html.indexOf("cf-browser-verification")>-1){
 
-      }
+      throw new Error("Cloudflare 拦截，请更换节点");
 
-      function setStatus(text, loading) {
+    }
 
-        $("statusText").textContent = text || "";
+    var next=parseList(html);
 
-        $("status").classList.toggle("show", !!text);
+    if(reset)state.items=[];
 
-        $("status").querySelector(".spinner").style.display = loading ? "" : "none";
+    var known={};
 
-      }
+    state.items.forEach(function(i){known[i.id]=true;});
 
-      function toast(text) {
+    next.forEach(function(i){if(!known[i.id])state.items.push(i);});
 
-        clearTimeout(toastTimer);
+    state.hasMore=next.length>=12;
 
-        $("toast").textContent = text;
+    setStatus("",false);
 
-        $("toast").classList.add("show");
+  }).catch(function(e){
 
-        toastTimer = setTimeout(function () { $("toast").classList.remove("show"); }, 2400);
+    setStatus("",false);
 
-      }
+    if(reset&&!state.items.length)$("grid").innerHTML='<div class="empty">加载失败：'+esc(e.message||e)+'</div>';
 
-      function renderChips() {
+    toast("加载失败："+(e.message||e));
 
-        $("chips").innerHTML = CATS.map(function (item) {
+  }).then(function(){
 
-          return '<button class="chip focusable' + (item[0] === state.cat && !state.key ? " active" : "") + '" type="button" data-cat="' + escapeAttr(item[0]) + '">' + escapeHtml(item[1]) + '</button>';
+    state.busy=false;
 
-        }).join("");
+    renderList();
 
-      }
+  });
 
-      function renderList(options) {
+}
 
-        options = options || {};
+function loadMore(){if(state.busy||!state.hasMore)return;state.page+=1;loadList(false);}
 
-        if (!state.items.length && !state.busy) {
+function switchCat(cat){
 
-          $("grid").innerHTML = '<div class="empty">没有找到内容</div>';
+  state.cat=cat;
 
-        } else {
+  renderChips();
 
-          $("grid").innerHTML = state.items.map(renderCard).join("");
+  loadList(true);
 
-        }
+}
 
-        $("moreBtn").classList.toggle("show", !!state.hasMore && !state.busy);
+function requestText(url){
 
-        if (options.focus) restoreListFocus();
+  return rawReq(url,{headers:{"Referer":HOST+"/"},timeout:30}).then(function(resp){
 
-      }
+    if(!resp||!resp.body)throw new Error((resp&&resp.error)||"empty");
 
-      function renderCard(item) {
+    return String(resp.body);
 
-        var poster = item.pic ? '<img src="' + escapeAttr(item.pic) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add(\'fallback\');this.remove();">' : "";
+  });
 
-        var fallback = poster ? "" : '<span>' + escapeHtml(item.title || item.id) + '</span>';
+}
 
-        return '<button class="card focusable" type="button" data-id="' + escapeAttr(item.id) + '" data-key="vod-' + escapeAttr(item.id) + '">' +
+function parsePlayUrl(html){
 
-          '<div class="thumb' + (poster ? "" : " fallback") + '" style="background:' + posterGradient(item.id) + '">' + poster + fallback + '<div class="badge">' + escapeHtml(item.title || item.id) + '</div></div>' +
+  var m=html.match(/(https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*)/i)
 
-          '<div class="card-body"><div class="title">' + escapeHtml(item.title || item.id) + '</div><div class="meta">TWIVIDEO</div></div>' +
+    ||html.match(/(https?:\/\/[^"'\s<>]+?\.mp4[^"'\s<>]*)/i)
 
-          '</button>';
+    ||html.match(/source\s+src=["']([^"']+)["']/i)
 
-      }
+    ||html.match(/<video[^>]+src=["']([^"']+)["']/i);
 
-      function posterGradient(id) {
+  if(m&&m[1]){var u=m[1];if(u.indexOf("//")===0)u="https:"+u;return u;}
 
-        var hue = Math.abs(String(id).length * 37) % 360;
+  return"";
 
-        return "linear-gradient(135deg,hsl(" + hue + ",36%,18%),hsl(" + ((hue + 58) % 360) + ",32%,12%))";
+}
 
-      }
+function openDetail(id){
 
-            function loadList(reset) {
+  var item=state.items.find(function(i){return i.id===id;})||{id:id,title:id,pic:""};
 
-        if (state.busy) return Promise.resolve();
+  state.detail={loading:true,item:item};
 
-        if (reset) { state.page = 1; state.items = []; state.hasMore = false; window.scrollTo(0, 0); }
+  renderDetail();
 
-        state.busy = true;
+  showDetail();
 
-        setStatus("加载中", true);
+  requestText(HOST+id).then(function(html){
 
-        renderList();
+    state.detail={item:item,url:parsePlayUrl(html)};
 
-        var parts = state.cat.split("|");
+    renderDetail();
 
-        var offset = (state.page - 1) * 50;
+  }).catch(function(e){
 
-        // 使用 TVBox 原生请求，绕过浏览器跨域限制
+    state.detail={item:item,error:String(e)};
 
-        var url = HOST + "/templates/view_lists.php";
+    renderDetail();
 
-        var params = "offset=" + offset + "&limit=50&tag=null&type=" + encodeURIComponent(parts[0]) + "&order=" + encodeURIComponent(parts[1]) + "&le=1000&ty=" + encodeURIComponent(parts[2]) + "&myarray=[]&offset_int=" + offset + "&view_token=" + encodeURIComponent(state.token || "");
+  });
 
-        
+}
 
-        var req = window.fm ? window.fm.req : fetch;
+function showDetail(){
 
-        var options = {
+  document.body.classList.add("detail-active");
 
-          method: "POST",
+  $("detailSheet").classList.add("active");
 
-          headers: {
+  $("detailSheet").setAttribute("aria-hidden","false");
 
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+}
 
-            "X-Requested-With": "XMLHttpRequest",
+function closeDetail(){
 
-            "Referer": HOST + "/?ranking"
+  document.body.classList.remove("detail-active");
 
-          },
+  $("detailSheet").classList.remove("active");
 
-          body: params
+  $("detailSheet").setAttribute("aria-hidden","true");
 
-        };
+  state.detail=null;
 
-        (window.fm ? req(url, options) : fetch(url, options).then(function(r){return r.text()}))
+}
 
-        .then(function(resp) {
+function renderDetail(){
 
-          var html = typeof resp === 'string' ? resp : (resp.body || "");
+  var d=state.detail||{},item=d.item||{};
 
-          if (!html) throw new Error("Empty response");
+  $("detailSub").textContent="TWIVIDEO";
 
-          
+  if(d.loading){$("detailBody").innerHTML='<div class="empty"><span class="spinner"></span>&nbsp;加载详情</div>';return;}
 
-          var next = parseList(html);
+  if(d.error){$("detailBody").innerHTML='<div class="empty">详情加载失败：'+esc(d.error)+'</div>';return;}
 
-          if (reset) state.items = [];
+  var title=item.title||item.id;
 
-          var known = {};
+  var poster=item.pic||"";
 
-          state.items.forEach(function (item) { known[item.id] = true; });
+  var posterHtml=poster?'<img src="'+esc(poster)+'" onerror="this.remove();">':"";
 
-          next.forEach(function (item) { if (!known[item.id]) state.items.push(item); });
+  var playBtn=d.url?'<button class="btn primary focusable" id="playBtn"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>播放</button>':"";
 
-          state.hasMore = next.length >= 12;
+  $("detailBody").innerHTML='<article class="detail-card">'
 
-          setStatus("", false);
+    +'<div class="poster" style="background:'+posterGradient(item.id)+'">'+posterHtml+'</div>'
 
-        }).catch(function (error) {
+    +'<div><h2 class="detail-title">'+esc(title)+'</h2>'
 
-          setStatus("", false);
+    +'<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:9px"><span class="detail-tag">TWIVIDEO</span></div>'
 
-          if (reset && !state.items.length) $("grid").innerHTML = '<div class="empty">加载失败：' + escapeHtml(error.message || error) + '</div>';
+    +'<div class="actions">'+playBtn+'</div></div></article>';
 
-          toast("加载失败：" + (error.message || error));
+}
 
-        }).then(function () {
+function playDetail(){
 
-          state.busy = false;
+  var d=state.detail||{};
 
-          renderList({ focus: true });
+  if(!d.url){toast("没有播放地址");return;}
 
-        });
+  var title=(d.item&&d.item.title)||"TWIVIDEO";
 
-      }
+  if(window.fm&&window.fm.play){window.fm.play(d.url,title);}
 
-      function loadMore() {
+  else{window.open(d.url,"_blank");}
 
-        if (state.busy || !state.hasMore) return;
+}
 
-        state.page += 1;
+function bindEvents(){
 
-        loadList(false);
+  $("chips").addEventListener("click",function(e){
 
-      }
+    var b=e.target.closest("button[data-cat]");
 
-      function switchCat(cat) {
+    if(b)switchCat(b.getAttribute("data-cat"));
 
-        state.cat = cat; state.key = "";
+  });
 
-        $("searchInput").value = "";
+  $("grid").addEventListener("click",function(e){
 
-        renderChips();
+    var c=e.target.closest("button.card");
 
-        loadList(true);
+    if(c)openDetail(c.getAttribute("data-id"));
 
-      }
+  });
 
-      function doSearch(keyword) {
+  $("moreBtn").addEventListener("click",loadMore);
 
-        keyword = String(keyword || "").trim();
+  $("searchForm").addEventListener("submit",function(e){e.preventDefault();toast("搜索功能请用原生搜索");});
 
-        if (!keyword) return;
+  $("closeDetailBtn").addEventListener("click",closeDetail);
 
-        toast("搜索功能需结合原生搜索实现");
+  $("detailBody").addEventListener("click",function(e){if(e.target.closest("#playBtn"))playDetail();});
 
-      }
+}
 
-      function openDetail(id) {
+renderChips();
 
-        var item = state.items.find(function (it) { return it.id === id; }) || { id: id, title: id, pic: "" };
+bindEvents();
 
-        state.detail = { loading: true, item: item };
+loadList(true);
 
-        renderDetail();
+})();
 
-        showDetail();
-
-        requestText(HOST + id).then(function (html) {
-
-          var url = parsePlayUrl(html);
-
-          state.detail = { item: item, url: url };
-
-          renderDetail();
-
-        }).catch(function (error) {
-
-          state.detail = { item: item, error: String(error) };
-
-          renderDetail();
-
-        });
-
-      }
-
-      function requestText(url) {
-
-        return waitForNativeSdk(1800).then(function () {
-
-          return sdk().req(url, { headers: { "Referer": HOST + "/" }, timeout: 30, credentials: "include" });
-
-        }).then(function (resp) {
-
-          if (!resp || !resp.ok || !resp.body) throw new Error(resp && resp.error || ("HTTP " + (resp && resp.status || 500)));
-
-          return String(resp.body);
-
-        });
-
-      }
-
-      function parsePlayUrl(html) {
-
-        var m = html.match(/(https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*)/i)
-
-          || html.match(/(https?:\/\/[^"'\s<>]+?\.mp4[^"'\s<>]*)/i)
-
-          || html.match(/source\s+src=["']([^"']+)["']/i)
-
-          || html.match(/<video[^>]+src=["']([^"']+)["']/i);
-
-        if (m && m[1]) {
-
-          var u = m[1];
-
-          if (u.indexOf("//") === 0) u = "https:" + u;
-
-          return u;
-
-        }
-
-        return "";
-
-      }
-
-      function showDetail() {
-
-        document.body.classList.add("detail-active");
-
-        $("detailSheet").classList.add("active");
-
-        $("detailSheet").setAttribute("aria-hidden", "false");
-
-        setTimeout(function () { focusRemoteTarget($("closeDetailBtn")); }, 40);
-
-      }
-
-      function closeDetail() {
-
-        document.body.classList.remove("detail-active");
-
-        $("detailSheet").classList.remove("active");
-
-        $("detailSheet").setAttribute("aria-hidden", "true");
-
-        state.detail = null;
-
-        requestAnimationFrame(restoreListFocus);
-
-      }
-
-      function renderDetail() {
-
-        var detail = state.detail || {};
-
-        var item = detail.item || {};
-
-        $("detailSub").textContent = "TWIVIDEO";
-
-        if (detail.loading) {
-
-          $("detailBody").innerHTML = '<div class="empty"><span class="spinner"></span>&nbsp;加载详情</div>';
-
-          return;
-
-        }
-
-        if (detail.error) {
-
-          $("detailBody").innerHTML = '<div class="empty">详情加载失败：' + escapeHtml(detail.error) + '</div>';
-
-          return;
-
-        }
-
-        var title = item.title || item.id;
-
-        var poster = item.pic || "";
-
-        var posterHtml = poster ? '<img src="' + escapeAttr(poster) + '" alt="" referrerpolicy="no-referrer" onerror="this.remove();">' : "";
-
-        var playButton = detail.url ? '<button class="btn primary focusable" id="playBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>播放</button>' : "";
-
-        $("detailBody").innerHTML =
-
-          '<article class="detail-card">' +
-
-          '<div class="poster" style="background:' + posterGradient(item.id) + '">' + posterHtml + '</div>' +
-
-          '<div class="detail-summary"><h2 class="detail-title">' + escapeHtml(title) + '</h2>' +
-
-          '<div class="detail-tags"><span class="detail-tag">TWIVIDEO</span></div>' +
-
-          '<div class="actions">' + playButton + '</div>' +
-
-          '</div></article>';
-
-      }
-
-      function playDetail() {
-
-        var detail = state.detail || {};
-
-        if (!detail.url) { toast("没有播放地址"); return; }
-
-        var title = detail.item && detail.item.title || "TWIVIDEO";
-
-        waitForNativeSdk(1500).then(function () {
-
-          return sdk().play(detail.url, title);
-
-        }).catch(function (error) {
-
-          toast("播放失败：" + (error.message || error));
-
-        });
-
-      }
-
-      function focusRemoteTarget(target) {
-
-        if (!target) return;
-
-        try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
-
-        var rect = target.getBoundingClientRect();
-
-        if (rect.top < 12 || rect.bottom > window.innerHeight - 18) target.scrollIntoView({ block: "nearest", inline: "nearest" });
-
-      }
-
-      function isVisibleFocusable(el) {
-
-        if (!el || !el.matches || !el.matches(".focusable,button,input")) return false;
-
-        if (el.disabled || el.getAttribute("tabindex") === "-1") return false;
-
-        if (el.closest("[aria-hidden='true']")) return false;
-
-        var rect = el.getBoundingClientRect();
-
-        return rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== "hidden";
-
-      }
-
-      function focusScopeRoot() {
-
-        if ($("detailSheet").classList.contains("active")) return $("detailSheet");
-
-        return $("app");
-
-      }
-
-      function restoreListFocus() {
-
-        if ($("detailSheet").classList.contains("active")) return;
-
-        var target = null;
-
-        if (state.focusKey) target = document.querySelector('[data-key="' + state.focusKey.replace(/"/g, '\\"') + '"]');
-
-        if (!target) target = document.querySelector(".chip.active") || document.querySelector(".card") || $("searchInput");
-
-        if (target && isVisibleFocusable(target)) focusRemoteTarget(target);
-
-      }
-
-      function bindEvents() {
-
-        $("chips").addEventListener("click", function (event) {
-
-          var btn = event.target.closest("button[data-cat]");
-
-          if (!btn) return;
-
-          switchCat(btn.getAttribute("data-cat"));
-
-        });
-
-        $("grid").addEventListener("click", function (event) {
-
-          var card = event.target.closest("button.card");
-
-          if (!card) return;
-
-          var id = card.getAttribute("data-id");
-
-          state.focusKey = card.getAttribute("data-key") || "";
-
-          state.scrollY = window.scrollY || 0;
-
-          openDetail(id);
-
-        });
-
-        $("moreBtn").addEventListener("click", loadMore);
-
-        $("searchForm").addEventListener("submit", function (event) {
-
-          event.preventDefault();
-
-          doSearch($("searchInput").value);
-
-        });
-
-        $("closeDetailBtn").addEventListener("click", closeDetail);
-
-        $("detailBody").addEventListener("click", function (event) {
-
-          var btn = event.target.closest("#playBtn");
-
-          if (btn) playDetail();
-
-        });
-
-        document.addEventListener("keydown", function (event) {
-
-          if (event.key === "Escape" && $("detailSheet").classList.contains("active")) {
-
-            event.preventDefault();
-
-            closeDetail();
-
-          }
-
-        });
-
-        window.addEventListener("keydown", function (event) {
-
-          if (!$("detailSheet").classList.contains("active")) return;
-
-          if (event.key === "Backspace" || event.key === "GoBack") {
-
-            event.preventDefault();
-
-            closeDetail();
-
-          }
-
-        });
-
-      }
-
-      function init() {
-
-        renderChips();
-
-        bindEvents();
-
-        loadList(true);
-
-      }
-
-      init();
-
-    })();
-
-  </script>
+</script>
 
 </body>
 
