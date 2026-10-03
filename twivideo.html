@@ -8,7 +8,17 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
+<meta name="theme-color" content="#101419">
+
 <title>TWIVIDEO</title>
+
+<script>
+
+  window.WEBHOME_PAGE_OPENED_AT = Date.now();
+
+  if (window.fongmiBridge || window.fm || window.fongmi) document.documentElement.classList.add("fm-native");
+
+</script>
 
 <style>
 
@@ -194,9 +204,11 @@ var CATS=[
 
 ];
 
-var state={cat:"ranking|24|p6",page:1,items:[],busy:false,hasMore:false,token:"",detail:null,focusKey:""};
+var state={cat:"ranking|24|p6",page:1,items:[],busy:false,hasMore:false,token:"",detail:null};
 
 var toastTimer=0;
+
+var nativeSdkWait=null;
 
 function $(id){return document.getElementById(id);}
 
@@ -204,35 +216,71 @@ function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"
 
 function absUrl(u){u=String(u||"").trim();if(!u)return"";if(/^\/\//.test(u))return"https:"+u;if(/^https?:\/\//i.test(u))return u;if(u.charAt(0)==="/")return HOST+u;return HOST+"/"+u.replace(/^\.?\//,"");}
 
-// 统一通过 fm.req 发请求，拿不到 fm 时回退到 fetch
+// ★ 关键：等待 fm 注入，避免过早回退到 fetch
+
+function waitForNativeSdk(timeout){
+
+  if(window.fm||!window.fongmiBridge)return Promise.resolve(!!window.fm);
+
+  if(nativeSdkWait)return nativeSdkWait;
+
+  nativeSdkWait=new Promise(function(resolve){
+
+    var done=false;
+
+    function finish(){
+
+      if(done)return;done=true;
+
+      window.removeEventListener("fmsdk",finish);
+
+      nativeSdkWait=null;
+
+      resolve(!!window.fm);
+
+    }
+
+    window.addEventListener("fmsdk",finish);
+
+    setTimeout(finish,timeout==null?1800:timeout);
+
+  });
+
+  return nativeSdkWait;
+
+}
 
 function rawReq(url,options){
 
   options=options||{};
 
-  if(window.fm&&window.fm.req){
+  return waitForNativeSdk(1800).then(function(){
 
-    return window.fm.req(url,options);
+    if(window.fm&&window.fm.req){
 
-  }
+      return window.fm.req(url,options);
 
-  return fetch(url,{
+    }
 
-    method:options.method||"GET",
+    return fetch(url,{
 
-    headers:options.headers||{},
+      method:options.method||"GET",
 
-    body:options.body,
+      headers:options.headers||{},
 
-    credentials:"include"
+      body:options.body,
 
-  }).then(function(r){
+      credentials:"include"
 
-    return r.text().then(function(t){return{ok:r.ok,status:r.status,body:t};});
+    }).then(function(r){
 
-  }).catch(function(e){
+      return r.text().then(function(t){return{ok:r.ok,status:r.status,body:t};});
 
-    return{ok:false,status:500,body:"",error:String(e)};
+    }).catch(function(e){
+
+      return{ok:false,status:500,body:"",error:String(e)};
+
+    });
 
   });
 
@@ -504,15 +552,7 @@ function loadList(reset){
 
 function loadMore(){if(state.busy||!state.hasMore)return;state.page+=1;loadList(false);}
 
-function switchCat(cat){
-
-  state.cat=cat;
-
-  renderChips();
-
-  loadList(true);
-
-}
+function switchCat(cat){state.cat=cat;renderChips();loadList(true);}
 
 function requestText(url){
 
