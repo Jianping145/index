@@ -216,8 +216,6 @@ function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"
 
 function absUrl(u){u=String(u||"").trim();if(!u)return"";if(/^\/\//.test(u))return"https:"+u;if(/^https?:\/\//i.test(u))return u;if(u.charAt(0)==="/")return HOST+u;return HOST+"/"+u.replace(/^\.?\//,"");}
 
-// ★ 关键：等待 fm 注入，避免过早回退到 fetch
-
 function waitForNativeSdk(timeout){
 
   if(window.fm||!window.fongmiBridge)return Promise.resolve(!!window.fm);
@@ -308,7 +306,9 @@ function getToken(){
 
   }).then(function(resp){
 
-    var text=(resp&&resp.body)||"";
+    var text=(resp&&(resp.body||resp.content||resp.data))||"";
+
+    if(!text&&typeof resp==="string")text=resp;
 
     if(!text)return"";
 
@@ -366,9 +366,15 @@ function requestList(type,order,ty,offset){
 
   }).then(function(resp){
 
-    if(!resp||!resp.body)throw new Error((resp&&resp.error)||"empty");
+    if(!resp)throw new Error("empty response");
 
-    return String(resp.body);
+    var text=resp.body||resp.content||resp.data||"";
+
+    if(!text&&typeof resp==="string")text=resp;
+
+    if(!text)throw new Error(resp.error||"empty");
+
+    return String(text);
 
   });
 
@@ -554,19 +560,93 @@ function loadMore(){if(state.busy||!state.hasMore)return;state.page+=1;loadList(
 
 function switchCat(cat){state.cat=cat;renderChips();loadList(true);}
 
+/* ★ 修复：兼容不同内核返回结构 */
+
 function requestText(url){
 
-  return rawReq(url,{headers:{"Referer":HOST+"/"},timeout:30}).then(function(resp){
+  return rawReq(url,{headers:{"Referer":HOST+"/?ranking"},timeout:30}).then(function(resp){
 
-    if(!resp||!resp.body)throw new Error((resp&&resp.error)||"empty");
+    if(!resp)throw new Error("empty response");
 
-    return String(resp.body);
+    var text=resp.body||resp.content||resp.data||"";
+
+    if(!text&&typeof resp==="string")text=resp;
+
+    if(!text)throw new Error(resp.error||"empty");
+
+    return String(text);
 
   });
 
 }
 
+/* ★ 修复：优先解析 player_aaaa，再兜底正则 */
+
 function parsePlayUrl(html){
+
+  var idx=html.indexOf("player_aaaa");
+
+  if(idx>-1){
+
+    var start=html.indexOf("{",idx);
+
+    if(start>-1){
+
+      var depth=0,inStr=false,quote="",escaped=false;
+
+      for(var i=start;i<Math.min(html.length,start+5000);i++){
+
+        var ch=html.charAt(i);
+
+        if(inStr){
+
+          if(escaped)escaped=false;
+
+          else if(ch==="\\")escaped=true;
+
+          else if(ch===quote)inStr=false;
+
+          continue;
+
+        }
+
+        if(ch==='"'||ch==="'"){inStr=true;quote=ch;}
+
+        else if(ch==="{")depth++;
+
+        else if(ch==="}"){
+
+          depth--;
+
+          if(depth===0){
+
+            try{
+
+              var cfg=JSON.parse(html.slice(start,i+1));
+
+              if(cfg&&cfg.url){
+
+                var u=cfg.url;
+
+                if(u.indexOf("//")===0)u="https:"+u;
+
+                return u;
+
+              }
+
+            }catch(e){}
+
+            break;
+
+          }
+
+        }
+
+      }
+
+    }
+
+  }
 
   var m=html.match(/(https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*)/i)
 
@@ -576,15 +656,19 @@ function parsePlayUrl(html){
 
     ||html.match(/<video[^>]+src=["']([^"']+)["']/i);
 
-  if(m&&m[1]){var u=m[1];if(u.indexOf("//")===0)u="https:"+u;return u;}
+  if(m&&m[1]){var u2=m[1];if(u2.indexOf("//")===0)u2="https:"+u2;return u2;}
 
   return"";
 
 }
 
+/* ★ 修复：用 absUrl 拼完整详情页地址 */
+
 function openDetail(id){
 
   var item=state.items.find(function(i){return i.id===id;})||{id:id,title:id,pic:""};
+
+  var detailUrl=absUrl(id);
 
   state.detail={loading:true,item:item};
 
@@ -592,15 +676,23 @@ function openDetail(id){
 
   showDetail();
 
-  requestText(HOST+id).then(function(html){
+  requestText(detailUrl).then(function(html){
 
-    state.detail={item:item,url:parsePlayUrl(html)};
+    if(html.indexOf("Just a moment")>-1||html.indexOf("cf-browser-verification")>-1){
+
+      throw new Error("Cloudflare 拦截，请更换节点");
+
+    }
+
+    var url=parsePlayUrl(html);
+
+    state.detail={item:item,url:url};
 
     renderDetail();
 
   }).catch(function(e){
 
-    state.detail={item:item,error:String(e)};
+    state.detail={item:item,error:String(e.message||e)};
 
     renderDetail();
 
