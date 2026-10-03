@@ -1,825 +1,542 @@
 <!doctype html>
-
 <html lang="zh-CN">
-
 <head>
-
 <meta charset="utf-8">
-
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-
 <meta name="theme-color" content="#101419">
-
 <title>TWIVIDEO</title>
-
 <script>
-
   window.WEBHOME_PAGE_OPENED_AT = Date.now();
-
   if (window.fongmiBridge || window.fm || window.fongmi) document.documentElement.classList.add("fm-native");
-
 </script>
-
 <style>
-
 :root{color-scheme:dark;--panel:rgba(76,88,98,.58);--panel-soft:rgba(76,88,98,.44);--control:rgba(34,43,51,.42);--control-active:rgba(48,61,70,.58);--text:#f4f7fb;--muted:rgba(226,234,242,.72);--line:rgba(255,255,255,.2);--radius:8px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
-
 *{box-sizing:border-box}
-
 html,body{margin:0;width:100%;min-height:100dvh;background:#303840;color:var(--text);overflow-x:hidden}
-
 body{overscroll-behavior-x:none}
-
 body.detail-active .app{visibility:hidden;pointer-events:none}
-
 button,input{font:inherit;color:inherit}
-
 button{border:0;margin:0;padding:0;background:transparent;cursor:pointer;text-align:inherit}
-
 img{display:block;max-width:100%;background:rgba(0,0,0,.12)}
-
 .app{min-height:100dvh;padding:max(12px,env(safe-area-inset-top)) 12px calc(18px+env(safe-area-inset-bottom))}
-
 .topbar{min-height:42px;margin-bottom:10px}
-
 h1{margin:0;font-size:17px;font-weight:800}
-
 .sub{margin-top:3px;font-size:12px;color:var(--muted)}
-
 .icon{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-
 .icon-btn,.btn,.chip,.field{border-radius:var(--radius);background:var(--control);border:1px solid var(--line);color:var(--text)}
-
 .icon-btn{width:42px;height:42px;display:grid;place-items:center}
-
 .btn{min-height:42px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 14px;font-size:14px;font-weight:700}
-
 .btn.primary{background:var(--control-active)}
-
 .search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}
-
 .field{width:100%;min-height:42px;padding:0 12px;outline:none;font-size:14px;background:var(--control)}
-
 .chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 5px;scrollbar-width:none}
-
 .chips::-webkit-scrollbar{display:none}
-
 .chip{flex:0 0 auto;min-height:36px;display:inline-flex;align-items:center;padding:0 14px;color:var(--muted);font-size:13px;font-weight:700;white-space:nowrap}
-
 .chip.active{background:var(--control-active);color:var(--text)}
-
 .status{min-height:38px;display:none;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border-radius:var(--radius);background:var(--panel-soft);border:1px solid var(--line);color:var(--muted);font-size:13px}
-
 .status.show{display:flex}
-
 .spinner{width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,.16);border-top-color:rgba(255,255,255,.76);animation:spin .85s linear infinite}
-
 @keyframes spin{to{transform:rotate(360deg)}}
-
 .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px;min-height:180px}
-
 .card{min-width:0;border-radius:var(--radius);overflow:hidden;background:var(--panel-soft);border:1px solid var(--line);color:var(--text);text-align:left}
-
 .thumb{position:relative;aspect-ratio:2/3;overflow:hidden;background:rgba(20,24,28,.5)}
-
 .thumb img{width:100%;height:100%;object-fit:cover}
-
 .thumb.fallback{display:grid;place-items:center;padding:8px;text-align:center}
-
 .thumb.fallback span{color:rgba(255,255,255,.28);font-size:20px;font-weight:900;word-break:break-word}
-
 .badge{position:absolute;left:6px;bottom:6px;max-width:calc(100% - 12px);padding:3px 6px;border-radius:6px;background:rgba(0,0,0,.52);border:1px solid rgba(255,255,255,.16);font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
 .card-body{min-height:50px;padding:7px;background:var(--panel)}
-
 .title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;font-weight:700;line-height:1.25;word-break:break-word}
-
 .meta{margin-top:4px;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
 .empty{grid-column:1/-1;min-height:120px;display:grid;place-items:center;padding:18px;border-radius:var(--radius);border:1px dashed rgba(255,255,255,.22);background:var(--panel-soft);color:var(--muted);text-align:center}
-
 .more{width:100%;margin-top:12px;display:none}
-
 .more.show{display:inline-flex}
-
 .sheet{position:fixed;inset:0;z-index:40;display:none;background:#303840;padding:max(12px,env(safe-area-inset-top)) 12px calc(18px+env(safe-area-inset-bottom));overflow:auto}
-
 .sheet.active{display:block}
-
 .detail-head{display:flex;align-items:center;gap:10px}
-
 .detail-card{display:grid;grid-template-columns:112px minmax(0,1fr);gap:14px;padding:12px;border-radius:var(--radius);background:var(--panel-soft);border:1px solid var(--line)}
-
 .poster{width:112px;aspect-ratio:2/3;border-radius:var(--radius);overflow:hidden;background:rgba(0,0,0,.2)}
-
 .poster img{width:100%;height:100%;object-fit:cover}
-
 .detail-title{margin:0;font-size:18px;font-weight:800;word-break:break-word}
-
 .detail-tag{min-height:26px;display:inline-flex;align-items:center;padding:0 9px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:var(--muted);font-size:11px;font-weight:700}
-
 .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
-
 .toast{position:fixed;left:12px;right:12px;bottom:calc(14px+env(safe-area-inset-bottom));z-index:80;display:none;min-height:42px;align-items:center;padding:10px 12px;border-radius:var(--radius);background:rgba(76,88,98,.9);border:1px solid var(--line);color:var(--text);font-size:13px}
-
 .toast.show{display:flex}
-
 .focusable:focus,button:focus,input:focus{outline:none;border-color:rgba(168,218,255,.72);box-shadow:0 0 0 1px rgba(168,218,255,.42),0 0 18px rgba(96,165,250,.24)}
-
 @media(min-width:560px){.app,.sheet{padding-left:18px;padding-right:18px}.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-
 @media(min-width:900px){.grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
-
 </style>
-
 </head>
-
 <body>
-
 <main class="app" id="app">
-
   <header class="topbar">
-
     <form class="search" id="searchForm" autocomplete="off">
-
       <input class="field focusable" id="searchInput" type="search" placeholder="検索キーワード" readonly>
-
       <button class="icon-btn focusable" type="submit"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
-
     </form>
-
   </header>
-
   <nav class="chips" id="chips"></nav>
-
   <div class="status" id="status"><span class="spinner"></span><span id="statusText">加载中</span></div>
-
   <section class="grid" id="grid"></section>
-
   <button class="btn more focusable" id="moreBtn" type="button">加载更多</button>
-
 </main>
-
 <section class="sheet" id="detailSheet" aria-hidden="true">
-
   <div class="detail">
-
     <div class="detail-head">
-
       <button class="icon-btn focusable" id="closeDetailBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
-
       <div><h1>详情</h1><div class="sub" id="detailSub">TWIVIDEO</div></div>
-
     </div>
-
     <div id="detailBody"></div>
-
   </div>
-
 </section>
-
 <div class="toast" id="toast"></div>
-
 <script>
-
 (function(){
-
 "use strict";
-
 var HOST="https://twivideo.net";
-
 var CATS=[
-
   ["ranking|24|p6","ランキング(24時間)"],
-
   ["0|post_date|p4","新着DL"],
-
   ["ranking|72|p6","ランキング(3日間)"],
-
   ["ranking|168|p6","ランキング(1週間)"],
-
   ["trending|r_count|p7","急上昇"],
-
   ["likeranking|24|p6","高評価"]
-
 ];
-
 var state={cat:"ranking|24|p6",page:1,items:[],busy:false,hasMore:false,token:"",detail:null};
-
 var toastTimer=0;
-
 var nativeSdkWait=null;
 
 function $(id){return document.getElementById(id);}
-
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
-
 function absUrl(u){u=String(u||"").trim();if(!u)return"";if(/^\/\//.test(u))return"https:"+u;if(/^https?:\/\//i.test(u))return u;if(u.charAt(0)==="/")return HOST+u;return HOST+"/"+u.replace(/^\.?\//,"");}
 
+function extractVid(s){
+  s=String(s||"");
+  var m=s.match(/(?:[?&]id=|\/api\/video\.php\?id=|\/video\/|\/v\/|\/)(\d{5,})/i);
+  if(m)return m[1];
+  m=s.match(/^(\d{5,})$/);
+  return m?m[1]:"";
+}
+
 function waitForNativeSdk(timeout){
-
   if(window.fm||!window.fongmiBridge)return Promise.resolve(!!window.fm);
-
   if(nativeSdkWait)return nativeSdkWait;
-
   nativeSdkWait=new Promise(function(resolve){
-
     var done=false;
-
     function finish(){
-
       if(done)return;done=true;
-
       window.removeEventListener("fmsdk",finish);
-
       nativeSdkWait=null;
-
       resolve(!!window.fm);
-
     }
-
     window.addEventListener("fmsdk",finish);
-
     setTimeout(finish,timeout==null?1800:timeout);
-
   });
-
   return nativeSdkWait;
-
 }
 
 function rawReq(url,options){
-
   options=options||{};
-
   return waitForNativeSdk(1800).then(function(){
-
     if(window.fm&&window.fm.req){
-
       return window.fm.req(url,options);
-
     }
-
     return fetch(url,{
-
       method:options.method||"GET",
-
       headers:options.headers||{},
-
       body:options.body,
-
       credentials:"include"
-
     }).then(function(r){
-
       return r.text().then(function(t){return{ok:r.ok,status:r.status,body:t};});
-
     }).catch(function(e){
-
       return{ok:false,status:500,body:"",error:String(e)};
-
     });
-
   });
-
 }
 
 function getToken(){
-
   return rawReq(HOST+"/templates/ajax_view_token.php",{
-
     method:"POST",
-
     headers:{
-
       "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8",
-
       "X-Requested-With":"XMLHttpRequest",
-
       "Referer":HOST+"/?ranking"
-
     },
-
     body:"",
-
     timeout:20
-
   }).then(function(resp){
-
     var text=(resp&&(resp.body||resp.content||resp.data))||"";
-
     if(!text&&typeof resp==="string")text=resp;
-
     if(!text)return"";
-
     var m=text.match(/"token"\s*:\s*"([^"]+)"/);
-
     if(m){state.token=m[1];return state.token;}
-
     try{var j=JSON.parse(text);if(j&&j.token){state.token=j.token;return state.token;}}catch(e){}
-
     return"";
-
   });
-
 }
 
 function requestList(type,order,ty,offset){
-
   var params="offset="+encodeURIComponent(offset)
-
     +"&limit="+encodeURIComponent(50)
-
     +"&tag="+encodeURIComponent("null")
-
     +"&type="+encodeURIComponent(type)
-
     +"&order="+encodeURIComponent(order)
-
     +"&le="+encodeURIComponent(1000)
-
     +"&ty="+encodeURIComponent(ty)
-
     +"&myarray="+encodeURIComponent("[]")
-
     +"&offset_int="+encodeURIComponent(offset)
-
     +"&view_token="+encodeURIComponent(state.token||"");
-
   return rawReq(HOST+"/templates/view_lists.php",{
-
     method:"POST",
-
     headers:{
-
       "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8",
-
       "X-Requested-With":"XMLHttpRequest",
-
       "Referer":HOST+"/?ranking"
-
     },
-
     body:params,
-
     timeout:30
-
   }).then(function(resp){
-
     if(!resp)throw new Error("empty response");
-
     var text=resp.body||resp.content||resp.data||"";
-
     if(!text&&typeof resp==="string")text=resp;
-
     if(!text)throw new Error(resp.error||"empty");
-
     return String(text);
-
   });
-
 }
 
 function parseList(html){
-
   var doc=new DOMParser().parseFromString(html,"text/html");
-
   var nodes=Array.prototype.slice.call(doc.querySelectorAll("li.art_li, div.art_li"));
-
   var items=[],seen={};
-
   nodes.forEach(function(node){
-
     var a=node.querySelector("a.item_link")||node.querySelector("a");
-
     if(!a)return;
-
     var href=a.getAttribute("href")||"";
-
-    if(!href||seen[href])return;
-
-    seen[href]=true;
-
+    var dataId=a.getAttribute("data-id")||node.getAttribute("data-id")||"";
     var img=node.querySelector("img");
-
     var pic=img?absUrl(img.getAttribute("data-src")||img.getAttribute("src")||""):"";
-
-    var name=a.getAttribute("data-id")||(img&&img.getAttribute("alt"))||"";
-
-    if(!name){
-
-      var m=href.match(/\/([^\/\?]+)(?:\?|$)/);
-
-      name=m?decodeURIComponent(m[1]):href;
-
+    var name=dataId||(img&&img.getAttribute("alt"))||"";
+    var vid=extractVid(dataId)||extractVid(href)||extractVid(name);
+    if(!vid){
+      if(!href||seen[href])return;
+      seen[href]=true;
+      if(!name){
+        var m=href.match(/\/([^\/\?]+)(?:\?|$)/);
+        name=m?decodeURIComponent(m[1]):href;
+      }
+      items.push({id:href,vid:"",title:name,pic:pic,href:href});
+      return;
     }
-
-    items.push({id:href,title:name,pic:pic});
-
+    if(seen[vid])return;
+    seen[vid]=true;
+    if(!name)name=vid;
+    // keep original href for fallback, but primary id is numeric
+    items.push({id:vid,vid:vid,title:name,pic:pic,href:href||""});
   });
-
   return items;
-
 }
 
 function setStatus(text,loading){
-
   $("statusText").textContent=text||"";
-
   $("status").classList.toggle("show",!!text);
-
   $("status").querySelector(".spinner").style.display=loading?"":"none";
-
 }
 
 function toast(text){
-
   clearTimeout(toastTimer);
-
   $("toast").textContent=text;
-
   $("toast").classList.add("show");
-
-  toastTimer=setTimeout(function(){$("toast").classList.remove("show");},2600);
-
+  toastTimer=setTimeout(function(){$("toast").classList.remove("show");},3200);
 }
 
 function renderChips(){
-
   $("chips").innerHTML=CATS.map(function(item){
-
     return '<button class="chip focusable'+(item[0]===state.cat?" active":"")+'" data-cat="'+esc(item[0])+'">'+esc(item[1])+'</button>';
-
   }).join("");
-
 }
 
 function posterGradient(id){
-
   var h=Math.abs(String(id).length*37)%360;
-
   return"linear-gradient(135deg,hsl("+h+",36%,18%),hsl("+((h+58)%360)+",32%,12%))";
-
 }
 
 function renderCard(item){
-
   var poster=item.pic?'<img src="'+esc(item.pic)+'" loading="lazy" onerror="this.parentNode.classList.add(\'fallback\');this.remove();">':"";
-
   var fb=poster?"":'<span>'+esc(item.title||item.id)+'</span>';
-
   return'<button class="card focusable" data-id="'+esc(item.id)+'" data-key="vod-'+esc(item.id)+'">'
-
     +'<div class="thumb'+(poster?"":" fallback")+'" style="background:'+posterGradient(item.id)+'">'+poster+fb+'<div class="badge">'+esc(item.title||item.id)+'</div></div>'
-
     +'<div class="card-body"><div class="title">'+esc(item.title||item.id)+'</div><div class="meta">TWIVIDEO</div></div>'
-
     +'</button>';
-
 }
 
 function renderList(){
-
   if(!state.items.length&&!state.busy){
-
     $("grid").innerHTML='<div class="empty">没有找到内容</div>';
-
   }else{
-
     $("grid").innerHTML=state.items.map(renderCard).join("");
-
   }
-
   $("moreBtn").classList.toggle("show",!!state.hasMore&&!state.busy);
-
 }
 
 function loadList(reset){
-
   if(state.busy)return Promise.resolve();
-
   if(reset){state.page=1;state.items=[];state.hasMore=false;window.scrollTo(0,0);}
-
   state.busy=true;
-
   setStatus("加载中",true);
-
   renderList();
-
   var parts=state.cat.split("|");
-
   var offset=(state.page-1)*50;
-
   var t=state.token?Promise.resolve(state.token):getToken();
-
   return t.then(function(){
-
     return requestList(parts[0],parts[1],parts[2],offset);
-
   }).then(function(html){
-
     if(html.indexOf("Just a moment")>-1||html.indexOf("cf-browser-verification")>-1){
-
       throw new Error("Cloudflare 拦截，请更换节点");
-
     }
-
     var next=parseList(html);
-
     if(reset)state.items=[];
-
     var known={};
-
     state.items.forEach(function(i){known[i.id]=true;});
-
     next.forEach(function(i){if(!known[i.id])state.items.push(i);});
-
     state.hasMore=next.length>=12;
-
     setStatus("",false);
-
   }).catch(function(e){
-
     setStatus("",false);
-
     if(reset&&!state.items.length)$("grid").innerHTML='<div class="empty">加载失败：'+esc(e.message||e)+'</div>';
-
     toast("加载失败："+(e.message||e));
-
   }).then(function(){
-
     state.busy=false;
-
     renderList();
-
   });
-
 }
 
 function loadMore(){if(state.busy||!state.hasMore)return;state.page+=1;loadList(false);}
-
 function switchCat(cat){state.cat=cat;renderChips();loadList(true);}
 
-/* ★ 修复：兼容不同内核返回结构，加 XHR 头 */
-
-function requestText(url){
-
+function requestText(url,extraHeaders){
+  var headers={
+    "Referer":HOST+"/?ranking",
+    "X-Requested-With":"XMLHttpRequest",
+    "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8"
+  };
+  if(extraHeaders){
+    for(var k in extraHeaders)headers[k]=extraHeaders[k];
+  }
   return rawReq(url,{
-
-    headers:{
-
-      "Referer":HOST+"/?ranking",
-
-      "X-Requested-With":"XMLHttpRequest",
-
-      "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-
-    },
-
+    headers:headers,
     timeout:30
-
   }).then(function(resp){
-
     if(!resp)throw new Error("empty response");
-
     var text=resp.body||resp.content||resp.data||"";
-
     if(!text&&typeof resp==="string")text=resp;
-
+    var status=resp.status||0;
+    if(!text&&status)throw new Error("HTTP "+status);
     if(!text)throw new Error(resp.error||"empty");
-
-    return String(text);
-
+    return {text:String(text),status:status,ok:resp.ok!==false&&(!status||status<400)};
   });
-
 }
-
-/* ★ 修复：优先解析 player_aaaa，再兜底正则 */
 
 function parsePlayUrl(html){
-
-  var idx=html.indexOf("player_aaaa");
-
-  if(idx>-1){
-
-    var start=html.indexOf("{",idx);
-
-    if(start>-1){
-
-      var depth=0,inStr=false,quote="",escaped=false;
-
-      for(var i=start;i<Math.min(html.length,start+5000);i++){
-
-        var ch=html.charAt(i);
-
-        if(inStr){
-
-          if(escaped)escaped=false;
-
-          else if(ch==="\\")escaped=true;
-
-          else if(ch===quote)inStr=false;
-
-          continue;
-
-        }
-
-        if(ch==='"'||ch==="'"){inStr=true;quote=ch;}
-
-        else if(ch==="{")depth++;
-
-        else if(ch==="}"){
-
-          depth--;
-
-          if(depth===0){
-
-            try{
-
-              var cfg=JSON.parse(html.slice(start,i+1));
-
-              if(cfg&&cfg.url){
-
-                var u=cfg.url;
-
-                if(u.indexOf("//")===0)u="https:"+u;
-
-                return u;
-
-              }
-
-            }catch(e){}
-
-            break;
-
-          }
-
-        }
-
+  if(!html)return"";
+  // JSON first
+  var trimmed=html.replace(/^\uFEFF/,"").trim();
+  if(trimmed.charAt(0)==="{"||trimmed.charAt(0)==="["){
+    try{
+      var j=JSON.parse(trimmed);
+      var cand=j.url||j.play||j.src||j.video||(j.data&&(j.data.url||j.data.play||j.data.src))||"";
+      if(cand){
+        if(String(cand).indexOf("//")===0)cand="https:"+cand;
+        return String(cand);
       }
-
-    }
-
+    }catch(e){}
   }
-
+  var idx=html.indexOf("player_aaaa");
+  if(idx>-1){
+    var start=html.indexOf("{",idx);
+    if(start>-1){
+      var depth=0,inStr=false,quote="",escaped=false;
+      for(var i=start;i<Math.min(html.length,start+8000);i++){
+        var ch=html.charAt(i);
+        if(inStr){
+          if(escaped)escaped=false;
+          else if(ch==="\\")escaped=true;
+          else if(ch===quote)inStr=false;
+          continue;
+        }
+        if(ch==='"'||ch==="'"){inStr=true;quote=ch;}
+        else if(ch==="{")depth++;
+        else if(ch==="}"){
+          depth--;
+          if(depth===0){
+            try{
+              var cfg=JSON.parse(html.slice(start,i+1));
+              if(cfg&&cfg.url){
+                var u=cfg.url;
+                if(u.indexOf("//")===0)u="https:"+u;
+                return u;
+              }
+            }catch(e){}
+            break;
+          }
+        }
+      }
+    }
+  }
   var m=html.match(/(https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*)/i)
-
     ||html.match(/(https?:\/\/[^"'\s<>]+?\.mp4[^"'\s<>]*)/i)
-
+    ||html.match(/["'](https?:\/\/video\.twimg\.com[^"']+)["']/i)
     ||html.match(/source\s+src=["']([^"']+)["']/i)
-
-    ||html.match(/<video[^>]+src=["']([^"']+)["']/i);
-
+    ||html.match(/<video[^>]+src=["']([^"']+)["']/i)
+    ||html.match(/["']url["']\s*:\s*["']([^"']+)["']/i);
   if(m&&m[1]){var u2=m[1];if(u2.indexOf("//")===0)u2="https:"+u2;return u2;}
-
   return"";
-
 }
 
-/* ★ 修复：智能拼 URL，并用 toast 显示实际请求地址 */
+function buildDetailCandidates(item){
+  var vid=item.vid||extractVid(item.id)||extractVid(item.href)||"";
+  var list=[];
+  function add(u){if(u&&list.indexOf(u)<0)list.push(u);}
+  // Prefer page-style URLs over the 403 API
+  if(vid){
+    add(HOST+"/?id="+vid);
+    add(HOST+"/?v="+vid);
+    add(HOST+"/video/"+vid);
+    add(HOST+"/"+vid);
+  }
+  if(item.href){
+    var h=absUrl(item.href);
+    // deprioritize known 403 API path
+    if(/api\/video\.php/i.test(h)){
+      // put at end
+    }else{
+      add(h);
+    }
+  }
+  if(vid){
+    add(HOST+"/api/video.php?id="+vid);
+  }
+  if(item.href&&/api\/video\.php/i.test(item.href)){
+    add(absUrl(item.href));
+  }
+  if(!list.length&&item.id){
+    add(absUrl(item.id));
+  }
+  return list;
+}
 
 function openDetail(id){
-
-  var item=state.items.find(function(i){return i.id===id;})||{id:id,title:id,pic:""};
-
-  var detailUrl=id.indexOf("http")===0?id:absUrl(id);
-
-  toast("详情地址: "+detailUrl);
-
+  var item=state.items.find(function(i){return i.id===id;})||{id:id,title:id,pic:"",vid:extractVid(id)};
+  var candidates=buildDetailCandidates(item);
+  toast("详情候选: "+(candidates[0]||"无"));
   state.detail={loading:true,item:item};
-
   renderDetail();
-
   showDetail();
 
-  requestText(detailUrl).then(function(html){
-
-    if(html.indexOf("Just a moment")>-1||html.indexOf("cf-browser-verification")>-1){
-
-      throw new Error("Cloudflare 拦截，请更换节点");
-
+  function tryNext(idx,lastErr){
+    if(idx>=candidates.length){
+      state.detail={item:item,error:String(lastErr||"无可用详情地址")};
+      renderDetail();
+      return;
     }
-
-    var url=parsePlayUrl(html);
-
-    state.detail={item:item,url:url};
-
-    renderDetail();
-
-  }).catch(function(e){
-
-    state.detail={item:item,error:String(e.message||e)};
-
-    renderDetail();
-
-  });
-
+    var detailUrl=candidates[idx];
+    requestText(detailUrl).then(function(res){
+      var html=res.text;
+      if(html.indexOf("Just a moment")>-1||html.indexOf("cf-browser-verification")>-1){
+        throw new Error("Cloudflare 拦截");
+      }
+      if(res.status===403||res.status===401||res.status===404){
+        throw new Error("HTTP "+res.status+" @ "+detailUrl);
+      }
+      var url=parsePlayUrl(html);
+      if(!url){
+        // try next candidate if no play url found
+        if(idx+1<candidates.length){
+          toast("无播放地址，试下一地址…");
+          return tryNext(idx+1,"no play url");
+        }
+        state.detail={item:item,error:"未解析到播放地址 ("+detailUrl+")"};
+        renderDetail();
+        return;
+      }
+      state.detail={item:item,url:url};
+      renderDetail();
+    }).catch(function(e){
+      var msg=String(e.message||e);
+      toast("试 "+(idx+1)+"/"+candidates.length+" 失败: "+msg);
+      tryNext(idx+1,msg);
+    });
+  }
+  tryNext(0);
 }
 
 function showDetail(){
-
   document.body.classList.add("detail-active");
-
   $("detailSheet").classList.add("active");
-
   $("detailSheet").setAttribute("aria-hidden","false");
-
 }
-
 function closeDetail(){
-
   document.body.classList.remove("detail-active");
-
   $("detailSheet").classList.remove("active");
-
   $("detailSheet").setAttribute("aria-hidden","true");
-
   state.detail=null;
-
 }
 
 function renderDetail(){
-
   var d=state.detail||{},item=d.item||{};
-
   $("detailSub").textContent="TWIVIDEO";
-
   if(d.loading){$("detailBody").innerHTML='<div class="empty"><span class="spinner"></span>&nbsp;加载详情</div>';return;}
-
   if(d.error){$("detailBody").innerHTML='<div class="empty">详情加载失败：'+esc(d.error)+'</div>';return;}
-
   var title=item.title||item.id;
-
   var poster=item.pic||"";
-
   var posterHtml=poster?'<img src="'+esc(poster)+'" onerror="this.remove();">':"";
-
   var playBtn=d.url?'<button class="btn primary focusable" id="playBtn"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>播放</button>':"";
-
+  var copyBtn=d.url?'<button class="btn focusable" id="copyBtn">复制地址</button>':"";
   $("detailBody").innerHTML='<article class="detail-card">'
-
     +'<div class="poster" style="background:'+posterGradient(item.id)+'">'+posterHtml+'</div>'
-
     +'<div><h2 class="detail-title">'+esc(title)+'</h2>'
-
     +'<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:9px"><span class="detail-tag">TWIVIDEO</span></div>'
-
-    +'<div class="actions">'+playBtn+'</div></div></article>';
-
+    +'<div class="actions">'+playBtn+copyBtn+'</div></div></article>';
 }
 
 function playDetail(){
-
   var d=state.detail||{};
-
   if(!d.url){toast("没有播放地址");return;}
-
   var title=(d.item&&d.item.title)||"TWIVIDEO";
-
   if(window.fm&&window.fm.play){window.fm.play(d.url,title);}
-
   else{window.open(d.url,"_blank");}
+}
 
+function copyDetail(){
+  var d=state.detail||{};
+  if(!d.url){toast("没有播放地址");return;}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(d.url).then(function(){toast("已复制播放地址");}).catch(function(){toast(d.url);});
+  }else{
+    toast(d.url);
+  }
 }
 
 function bindEvents(){
-
   $("chips").addEventListener("click",function(e){
-
     var b=e.target.closest("button[data-cat]");
-
     if(b)switchCat(b.getAttribute("data-cat"));
-
   });
-
   $("grid").addEventListener("click",function(e){
-
     var c=e.target.closest("button.card");
-
     if(c)openDetail(c.getAttribute("data-id"));
-
   });
-
   $("moreBtn").addEventListener("click",loadMore);
-
   $("searchForm").addEventListener("submit",function(e){e.preventDefault();toast("搜索功能请用原生搜索");});
-
   $("closeDetailBtn").addEventListener("click",closeDetail);
-
-  $("detailBody").addEventListener("click",function(e){if(e.target.closest("#playBtn"))playDetail();});
-
+  $("detailBody").addEventListener("click",function(e){
+    if(e.target.closest("#playBtn"))playDetail();
+    if(e.target.closest("#copyBtn"))copyDetail();
+  });
 }
 
 renderChips();
-
 bindEvents();
-
 loadList(true);
-
 })();
-
 </script>
-
 </body>
-
 </html>
