@@ -226,17 +226,7 @@ function waitForNativeSdk(timeout){
 
     var done=false;
 
-    function finish(){
-
-      if(done)return;done=true;
-
-      window.removeEventListener("fmsdk",finish);
-
-      nativeSdkWait=null;
-
-      resolve(!!window.fm);
-
-    }
+    function finish(){if(done)return;done=true;window.removeEventListener("fmsdk",finish);nativeSdkWait=null;resolve(!!window.fm);}
 
     window.addEventListener("fmsdk",finish);
 
@@ -254,31 +244,13 @@ function rawReq(url,options){
 
   return waitForNativeSdk(1800).then(function(){
 
-    if(window.fm&&window.fm.req){
+    if(window.fm&&window.fm.req)return window.fm.req(url,options);
 
-      return window.fm.req(url,options);
+    return fetch(url,{method:options.method||"GET",headers:options.headers||{},body:options.body,credentials:"include"})
 
-    }
+      .then(function(r){return r.text().then(function(t){return{ok:r.ok,status:r.status,body:t};});})
 
-    return fetch(url,{
-
-      method:options.method||"GET",
-
-      headers:options.headers||{},
-
-      body:options.body,
-
-      credentials:"include"
-
-    }).then(function(r){
-
-      return r.text().then(function(t){return{ok:r.ok,status:r.status,body:t};});
-
-    }).catch(function(e){
-
-      return{ok:false,status:500,body:"",error:String(e)};
-
-    });
+      .catch(function(e){return{ok:false,status:500,body:"",error:String(e)};});
 
   });
 
@@ -290,15 +262,7 @@ function getToken(){
 
     method:"POST",
 
-    headers:{
-
-      "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8",
-
-      "X-Requested-With":"XMLHttpRequest",
-
-      "Referer":HOST+"/?ranking"
-
-    },
+    headers:{"Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","X-Requested-With":"XMLHttpRequest","Referer":HOST+"/?ranking"},
 
     body:"",
 
@@ -326,43 +290,23 @@ function getToken(){
 
 function requestList(type,order,ty,offset){
 
-  var params="offset="+encodeURIComponent(offset)
+  var params="offset="+encodeURIComponent(offset)+"&limit="+encodeURIComponent(50)
 
-    +"&limit="+encodeURIComponent(50)
+    +"&tag="+encodeURIComponent("null")+"&type="+encodeURIComponent(type)
 
-    +"&tag="+encodeURIComponent("null")
+    +"&order="+encodeURIComponent(order)+"&le="+encodeURIComponent(1000)
 
-    +"&type="+encodeURIComponent(type)
+    +"&ty="+encodeURIComponent(ty)+"&myarray="+encodeURIComponent("[]")
 
-    +"&order="+encodeURIComponent(order)
-
-    +"&le="+encodeURIComponent(1000)
-
-    +"&ty="+encodeURIComponent(ty)
-
-    +"&myarray="+encodeURIComponent("[]")
-
-    +"&offset_int="+encodeURIComponent(offset)
-
-    +"&view_token="+encodeURIComponent(state.token||"");
+    +"&offset_int="+encodeURIComponent(offset)+"&view_token="+encodeURIComponent(state.token||"");
 
   return rawReq(HOST+"/templates/view_lists.php",{
 
     method:"POST",
 
-    headers:{
+    headers:{"Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","X-Requested-With":"XMLHttpRequest","Referer":HOST+"/?ranking"},
 
-      "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8",
-
-      "X-Requested-With":"XMLHttpRequest",
-
-      "Referer":HOST+"/?ranking"
-
-    },
-
-    body:params,
-
-    timeout:30
+    body:params,timeout:30
 
   }).then(function(resp){
 
@@ -380,7 +324,7 @@ function requestList(type,order,ty,offset){
 
 }
 
-/* ★ 关键：用 data-id 作为 id，不再把 api 路径当 id */
+/* ★ 列表：从卡片 href 中提取 api/video.php?id=xxx 的 id 值 */
 
 function parseList(html){
 
@@ -398,25 +342,19 @@ function parseList(html){
 
     var href=a.getAttribute("href")||"";
 
-    var postId=a.getAttribute("data-id")||"";
+    var m=href.match(/[?&]id=(\d+)/);
 
-    if(!postId){
+    var id=m?m[1]:(a.getAttribute("data-id")||"");
 
-      var m=href.match(/[?&]id=(\d+)/);
+    if(!id||seen[id])return;
 
-      if(m)postId=m[1];
-
-    }
-
-    if(!postId||seen[postId])return;
-
-    seen[postId]=true;
+    seen[id]=true;
 
     var img=node.querySelector("img");
 
     var pic=img?absUrl(img.getAttribute("data-src")||img.getAttribute("src")||""):"";
 
-    items.push({id:postId,title:postId,pic:pic});
+    items.push({id:id,title:id,pic:pic});
 
   });
 
@@ -562,177 +500,19 @@ function loadMore(){if(state.busy||!state.hasMore)return;state.page+=1;loadList(
 
 function switchCat(cat){state.cat=cat;renderChips();loadList(true);}
 
-/* ★ 通用请求：兼容多种返回结构 */
-
-function requestText(url,method,body){
-
-  var opt={
-
-    method:method||"GET",
-
-    headers:{
-
-      "Referer":HOST+"/?ranking",
-
-      "X-Requested-With":"XMLHttpRequest",
-
-      "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-
-    },
-
-    timeout:30
-
-  };
-
-  if(method==="POST"&&body)opt.body=body;
-
-  return rawReq(url,opt).then(function(resp){
-
-    if(!resp)throw new Error("empty response");
-
-    var text=resp.body||resp.content||resp.data||"";
-
-    if(!text&&typeof resp==="string")text=resp;
-
-    if(!text)throw new Error(resp.error||"empty");
-
-    return String(text);
-
-  });
-
-}
-
-/* ★ 解析 player_aaaa */
-
-function parsePlayUrl(html){
-
-  var idx=html.indexOf("player_aaaa");
-
-  if(idx>-1){
-
-    var start=html.indexOf("{",idx);
-
-    if(start>-1){
-
-      var depth=0,inStr=false,quote="",escaped=false;
-
-      for(var i=start;i<Math.min(html.length,start+5000);i++){
-
-        var ch=html.charAt(i);
-
-        if(inStr){
-
-          if(escaped)escaped=false;
-
-          else if(ch==="\\")escaped=true;
-
-          else if(ch===quote)inStr=false;
-
-          continue;
-
-        }
-
-        if(ch==='"'||ch==="'"){inStr=true;quote=ch;}
-
-        else if(ch==="{")depth++;
-
-        else if(ch==="}"){
-
-          depth--;
-
-          if(depth===0){
-
-            try{
-
-              var cfg=JSON.parse(html.slice(start,i+1));
-
-              if(cfg&&cfg.url){
-
-                var u=cfg.url;
-
-                if(u.indexOf("//")===0)u="https:"+u;
-
-                return u;
-
-              }
-
-            }catch(e){}
-
-            break;
-
-          }
-
-        }
-
-      }
-
-    }
-
-  }
-
-  var m=html.match(/(https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*)/i)
-
-    ||html.match(/(https?:\/\/[^"'\s<>]+?\.mp4[^"'\s<>]*)/i)
-
-    ||html.match(/source\s+src=["']([^"']+)["']/i)
-
-    ||html.match(/<video[^>]+src=["']([^"']+)["']/i);
-
-  if(m&&m[1]){var u2=m[1];if(u2.indexOf("//")===0)u2="https:"+u2;return u2;}
-
-  return"";
-
-}
-
-/* ★ 关键：POST api/video.php，失败降级到 GET 详情页 */
+/* ★ 详情：直接用 api/video.php?id=xxx，交给 fm.play 播放 */
 
 function openDetail(id){
 
   var item=state.items.find(function(i){return i.id===id;})||{id:id,title:id,pic:""};
 
-  state.detail={loading:true,item:item};
+  var playUrl=HOST+"/api/video.php?id="+encodeURIComponent(id);
+
+  state.detail={item:item,url:playUrl};
 
   renderDetail();
 
   showDetail();
-
-  toast("请求视频: "+id);
-
-  var apiUrl=HOST+"/api/video.php";
-
-  var apiBody="id="+encodeURIComponent(id)+"&view_token="+encodeURIComponent(state.token||"");
-
-  requestText(apiUrl,"POST",apiBody).then(function(text){
-
-    var url=parsePlayUrl(text);
-
-    if(url)return url;
-
-    // 降级：用 GET 请求网页版本
-
-    return requestText(HOST+"/?"+encodeURIComponent(id),"GET").then(function(html){
-
-      var u2=parsePlayUrl(html);
-
-      if(u2)return u2;
-
-      throw new Error("接口无地址且页面无地址");
-
-    });
-
-  }).then(function(url){
-
-    state.detail={item:item,url:url};
-
-    renderDetail();
-
-  }).catch(function(e){
-
-    state.detail={item:item,error:String(e.message||e)};
-
-    renderDetail();
-
-  });
 
 }
 
@@ -764,17 +544,13 @@ function renderDetail(){
 
   $("detailSub").textContent="TWIVIDEO";
 
-  if(d.loading){$("detailBody").innerHTML='<div class="empty"><span class="spinner"></span>&nbsp;加载详情</div>';return;}
-
-  if(d.error){$("detailBody").innerHTML='<div class="empty">详情加载失败：'+esc(d.error)+'</div>';return;}
-
   var title=item.title||item.id;
 
   var poster=item.pic||"";
 
   var posterHtml=poster?'<img src="'+esc(poster)+'" onerror="this.remove();">':"";
 
-  var playBtn=d.url?'<button class="btn primary focusable" id="playBtn"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>播放</button>':"";
+  var playBtn='<button class="btn primary focusable" id="playBtn"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>播放</button>';
 
   $("detailBody").innerHTML='<article class="detail-card">'
 
@@ -795,6 +571,8 @@ function playDetail(){
   if(!d.url){toast("没有播放地址");return;}
 
   var title=(d.item&&d.item.title)||"TWIVIDEO";
+
+  toast("正在进入播放");
 
   if(window.fm&&window.fm.play){window.fm.play(d.url,title);}
 
