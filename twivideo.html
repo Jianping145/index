@@ -440,7 +440,7 @@ function toast(text){
 
   $("toast").classList.add("show");
 
-  toastTimer=setTimeout(function(){$("toast").classList.remove("show");},2400);
+  toastTimer=setTimeout(function(){$("toast").classList.remove("show");},2600);
 
 }
 
@@ -560,11 +560,25 @@ function loadMore(){if(state.busy||!state.hasMore)return;state.page+=1;loadList(
 
 function switchCat(cat){state.cat=cat;renderChips();loadList(true);}
 
-/* ★ 修复：兼容不同内核返回结构 */
+/* ★ 修复：兼容不同内核返回结构，加 XHR 头 */
 
 function requestText(url){
 
-  return rawReq(url,{headers:{"Referer":HOST+"/?ranking"},timeout:30}).then(function(resp){
+  return rawReq(url,{
+
+    headers:{
+
+      "Referer":HOST+"/?ranking",
+
+      "X-Requested-With":"XMLHttpRequest",
+
+      "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+
+    },
+
+    timeout:30
+
+  }).then(function(resp){
 
     if(!resp)throw new Error("empty response");
 
@@ -662,13 +676,15 @@ function parsePlayUrl(html){
 
 }
 
-/* ★ 修复：用 absUrl 拼完整详情页地址 */
+/* ★ 修复：智能拼 URL，并用 toast 显示实际请求地址 */
 
 function openDetail(id){
 
   var item=state.items.find(function(i){return i.id===id;})||{id:id,title:id,pic:""};
 
-  var detailUrl=absUrl(id);
+  var detailUrl=id.indexOf("http")===0?id:absUrl(id);
+
+  toast("详情地址: "+detailUrl);
 
   state.detail={loading:true,item:item};
 
