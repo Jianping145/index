@@ -25,16 +25,12 @@
       --focus-line: rgba(168, 218, 255, .72);
       --focus-line-soft: rgba(168, 218, 255, .42);
       --focus-glow: rgba(96, 165, 250, .24);
-      --danger: #f09d9d;
       --radius: 8px;
       --fm-web-height: 100dvh;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
     }
     * { box-sizing: border-box; }
-    html, body {
-      margin: 0; width: 100%; min-height: var(--fm-web-height);
-      background: transparent; color: var(--text); overflow-x: hidden;
-    }
+    html, body { margin: 0; width: 100%; min-height: var(--fm-web-height); background: transparent; color: var(--text); overflow-x: hidden; }
     html:not(.fm-native), html:not(.fm-native) body {
       background-color: #303840;
       background-image: linear-gradient(45deg, rgba(255,255,255,.07) 25%, transparent 25%),
@@ -60,7 +56,6 @@
     .btn { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; font-size: 14px; font-weight: 760; text-decoration: none; }
     .btn.primary { background: var(--control-active); border-color: var(--line-strong); }
     .search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; min-width: 0; margin: 0; position: relative; z-index: 20; }
-    .search.hidden { display: none; }
     .field { width: 100%; min-width: 0; min-height: 42px; padding: 0 12px; outline: none; font-size: 14px; background: var(--control); }
     .search .icon-btn { width: 42px; height: 42px; background: var(--control-active); border-color: var(--line-strong); }
     .chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 5px; scrollbar-width: none; }
@@ -168,7 +163,7 @@
         ["zh/v42/category/censored/", "有码"],
         ["zh/v12/category/uncensored/", "无码"],
         ["zh/v24/category/amateur/", "素人"],
-        ["zh/v24/category/decensored/", "无码破解"],
+        ["zh/v25/category/decensored/", "无码破解"],
         ["zh/v10/category/censored/english-subtitle/", "英文字幕"],
         ["zh/v14/category/chinese-subtitle/", "中文字幕"],
         ["zh/v2/category/subtitle-indonesia/", "印尼字幕"]
@@ -351,7 +346,6 @@
         return hash;
       }
 
-      // 【关键】解析 BestJAV 的 HTML 结构
       function parseList(html) {
         var doc = new DOMParser().parseFromString(html, "text/html");
         var articles = doc.querySelectorAll("article.thumb-block, article.loop-video");
@@ -359,7 +353,6 @@
         var items = [];
 
         articles.forEach(function (article) {
-          // 跳过广告
           if (article.className.indexOf("native-ad") >= 0) return;
           if (article.innerHTML.indexOf("whitetrafsa") >= 0) return;
 
@@ -367,23 +360,17 @@
           if (!a) return;
 
           var href = a.getAttribute("href") || "";
-          var id = href;
+          var id = absoluteUrl(href);
 
-          // 提取标题 - 优先 entry-header 的 span
           var title = "";
           var headerSpan = article.querySelector("header.entry-header span");
           if (headerSpan) title = cleanText(headerSpan.textContent);
-
-          // 其次从 a 的 title 属性
           if (!title) title = cleanText(a.getAttribute("title") || "");
-
-          // 再次从 img 的 alt
           if (!title) {
             var img = article.querySelector("img");
             if (img) title = cleanText(img.getAttribute("alt") || "");
           }
 
-          // 提取图片 - 优先 data-lazy-src
           var pic = "";
           var img = article.querySelector("img");
           if (img) {
@@ -391,12 +378,10 @@
             pic = absoluteUrl(pic);
           }
 
-          // 提取时长
           var duration = "";
           var durEl = article.querySelector(".duration");
           if (durEl) duration = cleanText(durEl.textContent).replace(/[^0-9:]/g, "");
 
-          // 提取番号
           var sn = (title.match(/[A-Z]{2,12}-?\d{2,6}/i) || [])[0] || "";
 
           if (!id || seen[id]) return;
@@ -483,7 +468,6 @@
         renderDetail();
         showDetail(options.skipHistory);
 
-        // 获取详情页
         requestText(id).then(function (html) {
           var detail = parseDetail(html, existing);
           state.detail = detail;
@@ -500,7 +484,6 @@
       function parseDetail(html, item) {
         var doc = new DOMParser().parseFromString(html, "text/html");
 
-        // 提取标题
         var title = "";
         var h1 = doc.querySelector("h1");
         if (h1) title = cleanText(h1.textContent);
@@ -509,30 +492,40 @@
           if (metaTitle) title = cleanText(metaTitle.getAttribute("content"));
         }
 
-        // 提取封面
         var pic = item.pic || "";
         var ogImg = doc.querySelector('meta[property="og:image"], meta[name="twitter:image"]');
         if (ogImg) pic = absoluteUrl(ogImg.getAttribute("content"));
 
-        // 提取时长
         var duration = "";
-        var durEl = doc.querySelector(".duration");
-        if (durEl) duration = cleanText(durEl.textContent).replace(/[^0-9:]/g, "");
+        var durMeta = doc.querySelector('meta[itemprop="duration"]');
+        if (durMeta) {
+          var dur = durMeta.getAttribute("content") || "";
+          var h = dur.match(/(\d+)H/);
+          var m = dur.match(/(\d+)M/);
+          if (h && m) duration = h[1] + ":" + m[1] + ":00";
+        }
 
-        // 提取简介
         var desc = "";
         var descMeta = doc.querySelector('meta[name="description"], meta[property="og:description"]');
         if (descMeta) desc = cleanText(descMeta.getAttribute("content"));
 
-        // 【修改】BestJAV 播放地址是动态加载的，不在初始 HTML 中
-        // 直接返回详情页 URL，让用户在 WebView 中播放
+        // 尝试提取播放地址 - 查找 m3u8 或 videplay
+        var playUrl = "";
+        var m3u8Match = html.match(/https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*/i);
+        if (m3u8Match) playUrl = m3u8Match[0];
+
+        // 查找 data-mpu 属性（加密数据）
+        var mpuMatch = html.match(/data-mpu="([^"]+)"/);
+        var mpuData = mpuMatch ? mpuMatch[1] : "";
+
         return {
           item: item,
           title: title || item.title,
           pic: pic,
           duration: duration,
           desc: desc,
-          url: "",  // 播放地址需要通过 WebView 获取
+          url: playUrl,
+          mpuData: mpuData,
           pageUrl: item.id
         };
       }
@@ -572,8 +565,13 @@
         var poster = detail.pic || item.pic || "";
         var posterHtml = poster ? '<img src="' + escapeAttr(poster) + '" alt="" referrerpolicy="no-referrer" onerror="this.remove();">' : "";
 
-        // 【修改】BestJAV 需要 WebView 播放
+        // 播放按钮
         var playButton = '<button class="btn primary focusable" id="playBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>立即播放</button>';
+
+        // 如果有 m3u8 地址，显示复制按钮
+        if (detail.url) {
+          playButton += '<button class="btn focusable" id="copyBtn" type="button">复制地址</button>';
+        }
 
         var tags = [item.sn, detail.duration].filter(function (text, index, arr) {
           text = cleanText(text);
@@ -595,20 +593,45 @@
 
       function playDetail() {
         var detail = state.detail || {};
-        var url = detail.pageUrl || detail.item && detail.item.id;
+        var url = detail.url || detail.pageUrl;
         if (!url) {
           toast("没有播放地址");
           return;
         }
-        toast("正在打开播放器");
-        waitForNativeSdk(1500).then(function () {
-          // 直接打开详情页，让 WebView 处理播放
-          return sdk().play(url, detail.title || "BestJAV");
-        }).then(function () {
-          saveSnapshot();
-        }).catch(function (error) {
-          toast("播放失败：" + (error.message || error));
-        });
+
+        // 如果有 m3u8 地址，直接播放
+        if (detail.url && detail.url.indexOf(".m3u8") >= 0) {
+          toast("正在播放");
+          waitForNativeSdk(1500).then(function () {
+            return sdk().play(detail.url, detail.title || "BestJAV");
+          }).catch(function (error) {
+            toast("播放失败：" + (error.message || error));
+          });
+        } else {
+          // 否则打开详情页 WebView
+          toast("正在打开播放器");
+          waitForNativeSdk(1500).then(function () {
+            return sdk().play(detail.pageUrl, detail.title || "BestJAV");
+          }).catch(function (error) {
+            toast("播放失败：" + (error.message || error));
+          });
+        }
+      }
+
+      function copyUrl() {
+        var detail = state.detail || {};
+        if (detail.url) {
+          // 尝试复制到剪贴板
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(detail.url).then(function () {
+              toast("已复制播放地址");
+            }).catch(function () {
+              toast("复制失败");
+            });
+          } else {
+            toast("浏览器不支持复制");
+          }
+        }
       }
 
       function saveSnapshot() {
@@ -761,6 +784,7 @@
         $("closeDetailBtn").addEventListener("click", function () { closeDetail(false); });
         $("detailBody").addEventListener("click", function (event) {
           if (event.target.closest("#playBtn")) playDetail();
+          if (event.target.closest("#copyBtn")) copyUrl();
         });
         document.addEventListener("focusin", function (event) {
           var el = event.target;
