@@ -676,24 +676,51 @@
         });
       }
 
-      // 强制以 WebView 方式打开页面（兼容不同 Fongmi / TVBox 版本）
+      // 强制以 WebView / 浏览器方式打开页面
       function playAsWebView(url, title) {
         var s = sdk();
-        // 方式1: 部分版本支持 webview:// 前缀
-        // 方式2: 部分版本支持 options 参数
-        // 方式3: 最后回退到普通 play + 页面地址
-        if (s.play.length >= 3) {
-          // 尝试带 options 的调用
-          return s.play(url, title, { type: "webview", webview: true });
-        }
-        // 尝试常见前缀
+
+        // 方式1: 优先尝试原生 window.open（很多 Fongmi 会拦截并走内置浏览器）
+        try {
+          if (typeof window.open === "function") {
+            window.open(url, "_blank");
+            return Promise.resolve({});
+          }
+        } catch (e) {}
+
+        // 方式2: 尝试 Fongmi 常见 bridge
+        try {
+          if (window.fongmiBridge && typeof window.fongmiBridge.open === "function") {
+            window.fongmiBridge.open(url);
+            return Promise.resolve({});
+          }
+        } catch (e) {}
+
+        // 方式3: 尝试 fm.open / fm.browser
+        try {
+          if (window.fm) {
+            if (typeof window.fm.open === "function") {
+              return Promise.resolve(window.fm.open(url));
+            }
+            if (typeof window.fm.browser === "function") {
+              return Promise.resolve(window.fm.browser(url));
+            }
+          }
+        } catch (e) {}
+
+        // 方式4: 带 webview 标记的 play（部分版本支持）
         var candidates = [
           "webview://" + url,
+          "browser://" + url,
           url + "@@@webview",
+          url + "#webview",
           url
         ];
+
         function tryNext(i) {
-          if (i >= candidates.length) return Promise.reject(new Error("WebView 打开失败"));
+          if (i >= candidates.length) {
+            return Promise.reject(new Error("无法打开网页播放"));
+          }
           return s.play(candidates[i], title).catch(function () {
             return tryNext(i + 1);
           });
