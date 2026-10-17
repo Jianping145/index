@@ -622,7 +622,9 @@
         // 有直接地址优先直链播放，否则走页面 WebView
         var hasDirect = !!(detail.url && detail.url.trim());
         var playButton = '<button class="btn primary focusable" id="playBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>' + (hasDirect ? "立即播放" : "网页播放") + '</button>';
-        var urlInfo = '';
+        var urlInfo = hasDirect
+          ? '<div class="detail-section" style="margin-top:10px"><div class="detail-section-title">已解析到直链</div><div class="detail-section-text" style="font-size:11px;word-break:break-all">' + escapeHtml(detail.url.slice(0, 120)) + (detail.url.length > 120 ? "..." : "") + '</div></div>'
+          : '<div class="detail-section" style="margin-top:10px"><div class="detail-section-title">提示</div><div class="detail-section-text">未提取到 m3u8，将使用网页播放</div></div>';
 
         var tags = [item.sn, detail.duration].filter(function (text, index, arr) {
           text = cleanText(text);
@@ -644,25 +646,59 @@
 
       function playDetail() {
         var detail = state.detail || {};
-        // 优先使用解析出的真实视频地址（m3u8 / embed），否则回退到页面 URL 走 WebView
-        var url = (detail.url && detail.url.trim()) || detail.pageUrl || (detail.item && detail.item.id) || "";
-        if (!url) {
+        var directUrl = (detail.url && detail.url.trim()) || "";
+        var pageUrl = detail.pageUrl || (detail.item && detail.item.id) || "";
+        var title = detail.title || "BestJAV";
+
+        if (!directUrl && !pageUrl) {
           toast("没有播放地址");
           return;
         }
 
-        var isDirect = /\.m3u8|\.mp4|streamhls\.|videplay\.|\/embed\/|\/player\//i.test(url);
-        toast(isDirect ? "正在播放" : "正在打开播放器");
         waitForNativeSdk(1500).then(function () {
-          return sdk().play(url, detail.title || "BestJAV");
-        }).catch(function (error) {
-          // 直接地址失败时尝试回退到页面 WebView
-          if (isDirect && detail.pageUrl && detail.pageUrl !== url) {
-            toast("直接播放失败，尝试网页播放");
-            return sdk().play(detail.pageUrl, detail.title || "BestJAV");
+          // 1. 有直链优先播 m3u8
+          if (directUrl) {
+            toast("正在播放");
+            return sdk().play(directUrl, title).catch(function () {
+              // 直链失败再尝试网页
+              if (pageUrl) {
+                toast("直链失败，尝试网页播放");
+                return playAsWebView(pageUrl, title);
+              }
+              throw new Error("播放失败");
+            });
           }
+          // 2. 没有直链，强制用 WebView 打开页面
+          toast("正在打开网页播放");
+          return playAsWebView(pageUrl, title);
+        }).catch(function (error) {
           toast("播放失败：" + (error.message || error));
         });
+      }
+
+      // 强制以 WebView 方式打开页面（兼容不同 Fongmi / TVBox 版本）
+      function playAsWebView(url, title) {
+        var s = sdk();
+        // 方式1: 部分版本支持 webview:// 前缀
+        // 方式2: 部分版本支持 options 参数
+        // 方式3: 最后回退到普通 play + 页面地址
+        if (s.play.length >= 3) {
+          // 尝试带 options 的调用
+          return s.play(url, title, { type: "webview", webview: true });
+        }
+        // 尝试常见前缀
+        var candidates = [
+          "webview://" + url,
+          url + "@@@webview",
+          url
+        ];
+        function tryNext(i) {
+          if (i >= candidates.length) return Promise.reject(new Error("WebView 打开失败"));
+          return s.play(candidates[i], title).catch(function () {
+            return tryNext(i + 1);
+          });
+        }
+        return tryNext(0);
       }
 
       function saveSnapshot() {
