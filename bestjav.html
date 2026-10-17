@@ -509,28 +509,68 @@
         var descMeta = doc.querySelector('meta[name="description"], meta[property="og:description"]');
         if (descMeta) desc = cleanText(descMeta.getAttribute("content"));
 
-        // 【修复】尝试多种方式提取播放地址
+        // 【修复】尝试多种方式提取播放地址（针对 streamhls.click 优化）
         var playUrl = "";
 
-        // 方法1: 直接查找 m3u8
-        var m3u8Match = html.match(/https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*/i);
-        if (m3u8Match) playUrl = m3u8Match[0];
-
-        // 方法2: 查找 streamhls.click
-        if (!playUrl) {
-          var streamMatch = html.match(/https?:\/\/streamhls\.click\/[^\s"'<>]+/i);
-          if (streamMatch) playUrl = streamMatch[0];
+        // 方法1: 直接查找完整 m3u8（优先 master.m3u8）
+        var m3u8Matches = html.match(/https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/gi) || [];
+        if (m3u8Matches.length) {
+          var preferred = m3u8Matches.find(function (u) { return /master\.m3u8/i.test(u); })
+            || m3u8Matches.find(function (u) { return /index|playlist|1080|720|hd/i.test(u); });
+          playUrl = preferred || m3u8Matches[0];
         }
 
-        // 方法3: 查找 videplay embed
+        // 方法2: streamhls.click 完整路径（含 token）
         if (!playUrl) {
-          var embedMatch = html.match(/https?:\/\/(?:api\.)?videplay\.[a-z]+\/embed\/[^\s"'<>]+/i);
+          var streamMatch = html.match(/https?:\/\/streamhls\.click\/hls\/[^\s"'<>\\]+/i);
+          if (streamMatch) {
+            playUrl = streamMatch[0];
+            // 如果只匹配到目录，自动补 master.m3u8
+            if (!/\.m3u8/i.test(playUrl)) {
+              playUrl = playUrl.replace(/\/?$/, "/") + "master.m3u8";
+            }
+          }
+        }
+
+        // 方法3: 相对路径 /hls/xxx/yyy/ts/id/master.m3u8 或 index-v1-a1.m3u8
+        if (!playUrl) {
+          var relMatch = html.match(/["'](\/?hls\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\/\d+\/\d+\/(?:master|index[^"']*)\.m3u8)["']/i);
+          if (relMatch) {
+            playUrl = "https://streamhls.click" + (relMatch[1].charAt(0) === "/" ? "" : "/") + relMatch[1];
+          }
+        }
+
+        // 方法4: 查找 videplay / player embed
+        if (!playUrl) {
+          var embedMatch = html.match(/https?:\/\/(?:api\.)?(?:videplay|streamhls|player)\.[a-z0-9.-]+\/(?:embed|v|play|player)\/[^\s"'<>]+/i);
           if (embedMatch) playUrl = embedMatch[0];
         }
 
-        // 查找 data-mpu 属性（加密数据）
-        var mpuMatch = html.match(/data-mpu="([^"]+)"/);
+        // 方法5: iframe src
+        if (!playUrl) {
+          var iframeMatch = html.match(/<iframe[^>]+src=["'](https?:\/\/[^"']+(?:embed|player|stream|hls)[^"']*)["']/i);
+          if (iframeMatch) playUrl = iframeMatch[1];
+        }
+
+        // 方法6: source / video 标签
+        if (!playUrl) {
+          var sourceMatch = html.match(/<(?:source|video)[^>]+src=["'](https?:\/\/[^"']+\.(?:m3u8|mp4)[^"']*)["']/i);
+          if (sourceMatch) playUrl = sourceMatch[1];
+        }
+
+        // 查找 data-mpu 属性（加密数据，暂存备用）
+        var mpuMatch = html.match(/data-mpu=["']([^"']+)["']/);
         var mpuData = mpuMatch ? mpuMatch[1] : "";
+
+        // 清理转义
+        if (playUrl) {
+          playUrl = playUrl
+            .replace(/\\u002F/g, "/")
+            .replace(/\\\//g, "/")
+            .replace(/&amp;/g, "&")
+            .replace(/\\"/g, "")
+            .replace(/\\'/g, "");
+        }
 
         return {
           item: item,
@@ -579,8 +619,9 @@
         var poster = detail.pic || item.pic || "";
         var posterHtml = poster ? '<img src="' + escapeAttr(poster) + '" alt="" referrerpolicy="no-referrer" onerror="this.remove();">' : "";
 
-        // 【最终方案】纯 WebView 播放
-        var playButton = '<button class="btn primary focusable" id="playBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>立即播放</button>';
+        // 有直接地址优先直链播放，否则走页面 WebView
+        var hasDirect = !!(detail.url && detail.url.trim());
+        var playButton = '<button class="btn primary focusable" id="playBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>' + (hasDirect ? "立即播放" : "网页播放") + '</button>';
         var urlInfo = '';
 
         var tags = [item.sn, detail.duration].filter(function (text, index, arr) {
@@ -603,17 +644,23 @@
 
       function playDetail() {
         var detail = state.detail || {};
-        var url = detail.pageUrl || detail.item && detail.item.id;
+        // 优先使用解析出的真实视频地址（m3u8 / embed），否则回退到页面 URL 走 WebView
+        var url = (detail.url && detail.url.trim()) || detail.pageUrl || (detail.item && detail.item.id) || "";
         if (!url) {
           toast("没有播放地址");
           return;
         }
 
-        // 【最终方案】打开 WebView 播放
-        toast("正在打开播放器");
+        var isDirect = /\.m3u8|\.mp4|streamhls\.|videplay\.|\/embed\/|\/player\//i.test(url);
+        toast(isDirect ? "正在播放" : "正在打开播放器");
         waitForNativeSdk(1500).then(function () {
           return sdk().play(url, detail.title || "BestJAV");
         }).catch(function (error) {
+          // 直接地址失败时尝试回退到页面 WebView
+          if (isDirect && detail.pageUrl && detail.pageUrl !== url) {
+            toast("直接播放失败，尝试网页播放");
+            return sdk().play(detail.pageUrl, detail.title || "BestJAV");
+          }
           toast("播放失败：" + (error.message || error));
         });
       }
