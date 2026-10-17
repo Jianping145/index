@@ -509,10 +509,24 @@
         var descMeta = doc.querySelector('meta[name="description"], meta[property="og:description"]');
         if (descMeta) desc = cleanText(descMeta.getAttribute("content"));
 
-        // 尝试提取播放地址 - 查找 m3u8 或 videplay
+        // 【修复】尝试多种方式提取播放地址
         var playUrl = "";
+
+        // 方法1: 直接查找 m3u8
         var m3u8Match = html.match(/https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*/i);
         if (m3u8Match) playUrl = m3u8Match[0];
+
+        // 方法2: 查找 streamhls.click
+        if (!playUrl) {
+          var streamMatch = html.match(/https?:\/\/streamhls\.click\/[^\s"'<>]+/i);
+          if (streamMatch) playUrl = streamMatch[0];
+        }
+
+        // 方法3: 查找 videplay embed
+        if (!playUrl) {
+          var embedMatch = html.match(/https?:\/\/(?:api\.)?videplay\.[a-z]+\/embed\/[^\s"'<>]+/i);
+          if (embedMatch) playUrl = embedMatch[0];
+        }
 
         // 查找 data-mpu 属性（加密数据）
         var mpuMatch = html.match(/data-mpu="([^"]+)"/);
@@ -565,13 +579,9 @@
         var poster = detail.pic || item.pic || "";
         var posterHtml = poster ? '<img src="' + escapeAttr(poster) + '" alt="" referrerpolicy="no-referrer" onerror="this.remove();">' : "";
 
-        // 播放按钮
+        // 【最终方案】纯 WebView 播放
         var playButton = '<button class="btn primary focusable" id="playBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>立即播放</button>';
-
-        // 如果有 m3u8 地址，显示复制按钮
-        if (detail.url) {
-          playButton += '<button class="btn focusable" id="copyBtn" type="button">复制地址</button>';
-        }
+        var urlInfo = '';
 
         var tags = [item.sn, detail.duration].filter(function (text, index, arr) {
           text = cleanText(text);
@@ -588,50 +598,24 @@
           '<div class="detail-summary"><h2 class="detail-title">' + escapeHtml(title) + '</h2>' +
           '<div class="detail-tags">' + tags + '</div>' +
           '<div class="actions">' + playButton + '</div>' +
-          '</div>' + extra + '</article>';
+          '</div>' + urlInfo + extra + '</article>';
       }
 
       function playDetail() {
         var detail = state.detail || {};
-        var url = detail.url || detail.pageUrl;
+        var url = detail.pageUrl || detail.item && detail.item.id;
         if (!url) {
           toast("没有播放地址");
           return;
         }
 
-        // 如果有 m3u8 地址，直接播放
-        if (detail.url && detail.url.indexOf(".m3u8") >= 0) {
-          toast("正在播放");
-          waitForNativeSdk(1500).then(function () {
-            return sdk().play(detail.url, detail.title || "BestJAV");
-          }).catch(function (error) {
-            toast("播放失败：" + (error.message || error));
-          });
-        } else {
-          // 否则打开详情页 WebView
-          toast("正在打开播放器");
-          waitForNativeSdk(1500).then(function () {
-            return sdk().play(detail.pageUrl, detail.title || "BestJAV");
-          }).catch(function (error) {
-            toast("播放失败：" + (error.message || error));
-          });
-        }
-      }
-
-      function copyUrl() {
-        var detail = state.detail || {};
-        if (detail.url) {
-          // 尝试复制到剪贴板
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText(detail.url).then(function () {
-              toast("已复制播放地址");
-            }).catch(function () {
-              toast("复制失败");
-            });
-          } else {
-            toast("浏览器不支持复制");
-          }
-        }
+        // 【最终方案】打开 WebView 播放
+        toast("正在打开播放器");
+        waitForNativeSdk(1500).then(function () {
+          return sdk().play(url, detail.title || "BestJAV");
+        }).catch(function (error) {
+          toast("播放失败：" + (error.message || error));
+        });
       }
 
       function saveSnapshot() {
@@ -784,7 +768,6 @@
         $("closeDetailBtn").addEventListener("click", function () { closeDetail(false); });
         $("detailBody").addEventListener("click", function (event) {
           if (event.target.closest("#playBtn")) playDetail();
-          if (event.target.closest("#copyBtn")) copyUrl();
         });
         document.addEventListener("focusin", function (event) {
           var el = event.target;
