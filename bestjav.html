@@ -509,67 +509,79 @@
         var descMeta = doc.querySelector('meta[name="description"], meta[property="og:description"]');
         if (descMeta) desc = cleanText(descMeta.getAttribute("content"));
 
-        // 【修复】尝试多种方式提取播放地址（针对 streamhls.click 优化）
+        // ========== 播放地址提取（多策略） ==========
         var playUrl = "";
+        var mpuData = "";
+        var videoId = "";
+        var videoVer = "";
 
-        // 方法1: 直接查找完整 m3u8（优先 master.m3u8）
-        var m3u8Matches = html.match(/https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/gi) || [];
-        if (m3u8Matches.length) {
-          var preferred = m3u8Matches.find(function (u) { return /master\.m3u8/i.test(u); })
-            || m3u8Matches.find(function (u) { return /index|playlist|1080|720|hd/i.test(u); });
-          playUrl = preferred || m3u8Matches[0];
+        // 提取 data-mpu
+        var mpuEl = doc.querySelector('#video-player[data-mpu]');
+        if (mpuEl) mpuData = mpuEl.getAttribute('data-mpu') || "";
+
+        // 提取 video-id 和 video_ver
+        var playerArea = doc.querySelector('#video-player-area');
+        if (playerArea) {
+          videoId = playerArea.getAttribute('video-id') || "";
+          videoVer = playerArea.getAttribute('video_ver') || "";
         }
 
-        // 方法2: streamhls.click 完整路径（含 token）
+        // 策略1: 直接在 HTML 中查找 m3u8（部分缓存页面可能有）
+        var m3u8Matches = html.match(/https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/gi) || [];
+        if (m3u8Matches.length) {
+          var preferred = m3u8Matches.find(function(u) { return /master\.m3u8/i.test(u); })
+            || m3u8Matches[0];
+          playUrl = preferred;
+        }
+
+        // 策略2: 查找 streamhls.click 路径
         if (!playUrl) {
           var streamMatch = html.match(/https?:\/\/streamhls\.click\/hls\/[^\s"'<>\\]+/i);
           if (streamMatch) {
             playUrl = streamMatch[0];
-            // 如果只匹配到目录，自动补 master.m3u8
             if (!/\.m3u8/i.test(playUrl)) {
               playUrl = playUrl.replace(/\/?$/, "/") + "master.m3u8";
             }
           }
         }
 
-        // 方法3: 相对路径 /hls/xxx/yyy/ts/id/master.m3u8 或 index-v1-a1.m3u8
-        if (!playUrl) {
-          var relMatch = html.match(/["'](\/?hls\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\/\d+\/\d+\/(?:master|index[^"']*)\.m3u8)["']/i);
-          if (relMatch) {
-            playUrl = "https://streamhls.click" + (relMatch[1].charAt(0) === "/" ? "" : "/") + relMatch[1];
+        // 策略3: 通过 API 异步获取播放地址
+        if (!playUrl && videoId) {
+          fetchRealPlayUrl(videoId, videoVer, mpuData, item.id).then(function(url) {
+            if (url && state.detail && state.detail.item && state.detail.item.id === item.id) {
+              state.detail.url = url;
+              renderDetail();
+              saveSnapshot();
+              toast("已获取播放地址");
+            }
+          });
+        }
+
+        // 策略4: 构造 streamhls 地址（基于抓包分析的模式）
+        if (!playUrl && mpuData && videoId) {
+          var hash = extractHashFromMpu(mpuData);
+          if (hash) {
+            var timestamp = Math.floor(Date.now() / 1000);
+            playUrl = 'https://streamhls.click/hls/' + hash + '/x/' + timestamp + '/' + videoId + '/master.m3u8';
           }
         }
 
-        // 方法4: 查找 videplay / player embed
-        if (!playUrl) {
-          var embedMatch = html.match(/https?:\/\/(?:api\.)?(?:videplay|streamhls|player)\.[a-z0-9.-]+\/(?:embed|v|play|player)\/[^\s"'<>]+/i);
-          if (embedMatch) playUrl = embedMatch[0];
-        }
-
-        // 方法5: iframe src
+        // 策略5: 查找 iframe / embed / source
         if (!playUrl) {
           var iframeMatch = html.match(/<iframe[^>]+src=["'](https?:\/\/[^"']+(?:embed|player|stream|hls)[^"']*)["']/i);
           if (iframeMatch) playUrl = iframeMatch[1];
         }
-
-        // 方法6: source / video 标签
         if (!playUrl) {
           var sourceMatch = html.match(/<(?:source|video)[^>]+src=["'](https?:\/\/[^"']+\.(?:m3u8|mp4)[^"']*)["']/i);
           if (sourceMatch) playUrl = sourceMatch[1];
         }
-
-        // 查找 data-mpu 属性（加密数据，暂存备用）
-        var mpuMatch = html.match(/data-mpu=["']([^"']+)["']/);
-        var mpuData = mpuMatch ? mpuMatch[1] : "";
 
         // 清理转义
         if (playUrl) {
           playUrl = playUrl
             .replace(/\\u002F/g, "/")
             .replace(/\\\//g, "/")
-            .replace(/&amp;/g, "&")
-            .replace(/\\"/g, "")
-            .replace(/\\'/g, "");
+            .replace(/&amp;/g, "&");
         }
 
         return {
@@ -580,8 +592,123 @@
           desc: desc,
           url: playUrl,
           mpuData: mpuData,
+          videoId: videoId,
+          videoVer: videoVer,
           pageUrl: item.id
         };
+      }
+
+      // ========== 通过 API 获取真实播放地址 ==========
+      function fetchRealPlayUrl(videoId, videoVer, mpuData, pageUrl) {
+        // 方法1: 尝试 WordPress AJAX API
+        var ajaxUrl = "https://www.bestjavporn.com/wp-admin/admin-ajax.php";
+        var body = "action=get_video_source&video_id=" + encodeURIComponent(videoId) 
+                 + "&video_ver=" + encodeURIComponent(videoVer || '2')
+                 + "&mpu=" + encodeURIComponent(mpuData || '')
+                 + "&post_id=" + encodeURIComponent(videoId);
+
+        return waitForNativeSdk(1500).then(function() {
+          return sdk().req(ajaxUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'Referer': pageUrl,
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: body,
+            timeout: 15
+          });
+        }).then(function(resp) {
+          if (!resp || !resp.ok || !resp.body) throw new Error('API request failed');
+
+          // 尝试解析 JSON
+          try {
+            var data = JSON.parse(resp.body);
+            if (data.url) return data.url;
+            if (data.source) return data.source;
+            if (data.src) return data.src;
+            if (data.m3u8) return data.m3u8;
+          } catch (e) {}
+
+          // 尝试从 HTML 响应中提取 m3u8
+          var m3u8Match = resp.body.match(/https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/);
+          if (m3u8Match) return m3u8Match[0];
+
+          throw new Error('No URL in response');
+        }).catch(function() {
+          // 方法2: 尝试直接访问播放器接口
+          return tryPlayerApi(videoId, videoVer, mpuData, pageUrl);
+        });
+      }
+
+      // ========== 尝试播放器接口 ==========
+      function tryPlayerApi(videoId, videoVer, mpuData, pageUrl) {
+        // 基于抓包分析，尝试常见的播放器 API 端点
+        var endpoints = [
+          'https://www.bestjavporn.com/api/video/' + videoId,
+          'https://www.bestjavporn.com/api/player/' + videoId,
+          'https://www.bestjavporn.com/api/source/' + videoId,
+          'https://player.bestjavporn.com/api/' + videoId,
+          'https://api.bestjavporn.com/video/' + videoId
+        ];
+
+        var tryEndpoint = function(index) {
+          if (index >= endpoints.length) return Promise.reject(new Error('All endpoints failed'));
+
+          return waitForNativeSdk(1000).then(function() {
+            return sdk().req(endpoints[index], {
+              headers: {
+                'Referer': pageUrl,
+                'Accept': 'application/json, text/plain, */*'
+              },
+              timeout: 10
+            });
+          }).then(function(resp) {
+            if (!resp || !resp.ok || !resp.body) throw new Error('Request failed');
+
+            // 尝试解析
+            try {
+              var data = JSON.parse(resp.body);
+              var url = data.url || data.source || data.src || data.m3u8 || data.playUrl;
+              if (url) return url;
+            } catch (e) {}
+
+            // 尝试从文本中提取
+            var m3u8Match = resp.body.match(/https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/);
+            if (m3u8Match) return m3u8Match[0];
+
+            throw new Error('No URL found');
+          }).catch(function() {
+            return tryEndpoint(index + 1);
+          });
+        };
+
+        return tryEndpoint(0);
+      }
+
+      // ========== 从 MPU 数据提取 Hash ==========
+      function extractHashFromMpu(mpuData) {
+        // 基于抓包分析，hash 可能来自 mpuData 的特定部分
+        // 尝试多种提取方式
+
+        // 方式1: 直接取前 32 个字符的 Base64 解码
+        try {
+          var prefix = mpuData.substring(0, 32);
+          var decoded = atob(prefix.replace(/-/g, '+').replace(/_/g, '/'));
+          // 检查是否是有效的 hash 格式（字母数字）
+          if (/^[a-zA-Z0-9]+$/.test(decoded)) {
+            return decoded;
+          }
+        } catch (e) {}
+
+        // 方式2: 使用简单哈希
+        var hash = 0;
+        for (var i = 0; i < mpuData.length; i++) {
+          var char = mpuData.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash;
+        }
+        return Math.abs(hash).toString(36);
       }
 
       function showDetail(skipHistory) {
