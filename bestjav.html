@@ -545,26 +545,29 @@
           }
         }
 
-        // 策略3: 通过 API 异步获取播放地址
-        if (!playUrl && videoId) {
-          fetchRealPlayUrl(videoId, videoVer, mpuData, item.id).then(function(url) {
-            if (url && state.detail && state.detail.item && state.detail.item.id === item.id) {
-              state.detail.url = url;
-              renderDetail();
-              saveSnapshot();
-              toast("已获取播放地址");
+        // 策略3: 尝试从页面 JS 变量中提取（部分页面可能有）
+        if (!playUrl) {
+          var jsVarPatterns = [
+            /playerConfig\s*=\s*({[^}]+})/i,
+            /videoSource\s*=\s*["']([^"']+)["']/i,
+            /streamUrl\s*=\s*["']([^"']+)["']/i,
+            /hlsUrl\s*=\s*["']([^"']+)["']/i
+          ];
+          for (var i = 0; i < jsVarPatterns.length; i++) {
+            var match = html.match(jsVarPatterns[i]);
+            if (match) {
+              var extracted = match[1] || match[0];
+              var urlMatch = extracted.match(/https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/);
+              if (urlMatch) {
+                playUrl = urlMatch[0];
+                break;
+              }
             }
-          });
-        }
-
-        // 策略4: 构造 streamhls 地址（基于抓包分析的模式）
-        if (!playUrl && mpuData && videoId) {
-          var hash = extractHashFromMpu(mpuData);
-          if (hash) {
-            var timestamp = Math.floor(Date.now() / 1000);
-            playUrl = 'https://streamhls.click/hls/' + hash + '/x/' + timestamp + '/' + videoId + '/master.m3u8';
           }
         }
+
+        // 策略4: 不再构造假地址，避免误导用户
+        // 真实的 streamhls 地址需要通过解密 data-mpu 或拦截播放器请求获取
 
         // 策略5: 查找 iframe / embed / source
         if (!playUrl) {
@@ -596,119 +599,6 @@
           videoVer: videoVer,
           pageUrl: item.id
         };
-      }
-
-      // ========== 通过 API 获取真实播放地址 ==========
-      function fetchRealPlayUrl(videoId, videoVer, mpuData, pageUrl) {
-        // 方法1: 尝试 WordPress AJAX API
-        var ajaxUrl = "https://www.bestjavporn.com/wp-admin/admin-ajax.php";
-        var body = "action=get_video_source&video_id=" + encodeURIComponent(videoId) 
-                 + "&video_ver=" + encodeURIComponent(videoVer || '2')
-                 + "&mpu=" + encodeURIComponent(mpuData || '')
-                 + "&post_id=" + encodeURIComponent(videoId);
-
-        return waitForNativeSdk(1500).then(function() {
-          return sdk().req(ajaxUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-              'Referer': pageUrl,
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: body,
-            timeout: 15
-          });
-        }).then(function(resp) {
-          if (!resp || !resp.ok || !resp.body) throw new Error('API request failed');
-
-          // 尝试解析 JSON
-          try {
-            var data = JSON.parse(resp.body);
-            if (data.url) return data.url;
-            if (data.source) return data.source;
-            if (data.src) return data.src;
-            if (data.m3u8) return data.m3u8;
-          } catch (e) {}
-
-          // 尝试从 HTML 响应中提取 m3u8
-          var m3u8Match = resp.body.match(/https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/);
-          if (m3u8Match) return m3u8Match[0];
-
-          throw new Error('No URL in response');
-        }).catch(function() {
-          // 方法2: 尝试直接访问播放器接口
-          return tryPlayerApi(videoId, videoVer, mpuData, pageUrl);
-        });
-      }
-
-      // ========== 尝试播放器接口 ==========
-      function tryPlayerApi(videoId, videoVer, mpuData, pageUrl) {
-        // 基于抓包分析，尝试常见的播放器 API 端点
-        var endpoints = [
-          'https://www.bestjavporn.com/api/video/' + videoId,
-          'https://www.bestjavporn.com/api/player/' + videoId,
-          'https://www.bestjavporn.com/api/source/' + videoId,
-          'https://player.bestjavporn.com/api/' + videoId,
-          'https://api.bestjavporn.com/video/' + videoId
-        ];
-
-        var tryEndpoint = function(index) {
-          if (index >= endpoints.length) return Promise.reject(new Error('All endpoints failed'));
-
-          return waitForNativeSdk(1000).then(function() {
-            return sdk().req(endpoints[index], {
-              headers: {
-                'Referer': pageUrl,
-                'Accept': 'application/json, text/plain, */*'
-              },
-              timeout: 10
-            });
-          }).then(function(resp) {
-            if (!resp || !resp.ok || !resp.body) throw new Error('Request failed');
-
-            // 尝试解析
-            try {
-              var data = JSON.parse(resp.body);
-              var url = data.url || data.source || data.src || data.m3u8 || data.playUrl;
-              if (url) return url;
-            } catch (e) {}
-
-            // 尝试从文本中提取
-            var m3u8Match = resp.body.match(/https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/);
-            if (m3u8Match) return m3u8Match[0];
-
-            throw new Error('No URL found');
-          }).catch(function() {
-            return tryEndpoint(index + 1);
-          });
-        };
-
-        return tryEndpoint(0);
-      }
-
-      // ========== 从 MPU 数据提取 Hash ==========
-      function extractHashFromMpu(mpuData) {
-        // 基于抓包分析，hash 可能来自 mpuData 的特定部分
-        // 尝试多种提取方式
-
-        // 方式1: 直接取前 32 个字符的 Base64 解码
-        try {
-          var prefix = mpuData.substring(0, 32);
-          var decoded = atob(prefix.replace(/-/g, '+').replace(/_/g, '/'));
-          // 检查是否是有效的 hash 格式（字母数字）
-          if (/^[a-zA-Z0-9]+$/.test(decoded)) {
-            return decoded;
-          }
-        } catch (e) {}
-
-        // 方式2: 使用简单哈希
-        var hash = 0;
-        for (var i = 0; i < mpuData.length; i++) {
-          var char = mpuData.charCodeAt(i);
-          hash = ((hash << 5) - hash) + char;
-          hash = hash & hash;
-        }
-        return Math.abs(hash).toString(36);
       }
 
       function showDetail(skipHistory) {
@@ -750,7 +640,7 @@
         var hasDirect = !!(detail.url && detail.url.trim());
         var playButton = '<button class="btn primary focusable" id="playBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>' + (hasDirect ? "立即播放" : "网页播放") + '</button>';
         var urlInfo = hasDirect
-          ? '<div class="detail-section" style="margin-top:10px"><div class="detail-section-title">已解析到直链</div><div class="detail-section-text" style="font-size:11px;word-break:break-all">' + escapeHtml(detail.url.slice(0, 120)) + (detail.url.length > 120 ? "..." : "") + '</div></div>'
+          ? '<div class="detail-section" style="margin-top:10px"><div class="detail-section-title">播放地址</div><div class="detail-section-text" style="font-size:11px;word-break:break-all">' + escapeHtml(detail.url.slice(0, 120)) + (detail.url.length > 120 ? "..." : "") + '</div></div>'
           : '<div class="detail-section" style="margin-top:10px"><div class="detail-section-title">提示</div><div class="detail-section-text">未提取到 m3u8，将使用网页播放</div></div>';
 
         var tags = [item.sn, detail.duration].filter(function (text, index, arr) {
