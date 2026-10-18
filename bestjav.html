@@ -166,7 +166,9 @@
         ["zh/v25/category/decensored/", "无码破解"],
         ["zh/v10/category/censored/english-subtitle/", "英文字幕"],
         ["zh/v14/category/chinese-subtitle/", "中文字幕"],
-        ["zh/v2/category/subtitle-indonesia/", "印尼字幕"]
+        ["zh/v2/category/subtitle-indonesia/", "印尼字幕"],
+        ["zh/pornstars/", "女優"],
+        ["zh/studios/", "片商"]
       ];
       var CACHE_RULE = "bestjav_webhome";
       var SNAPSHOT_KEY = "bestjav_state_v2";
@@ -348,7 +350,7 @@
 
       function parseList(html) {
         var doc = new DOMParser().parseFromString(html, "text/html");
-        var articles = doc.querySelectorAll("article.thumb-block, article.loop-video");
+        var articles = doc.querySelectorAll("article.thumb-block, article.loop-video, li.thumb-block, .thumb-block");
         var seen = {};
         var items = [];
 
@@ -356,14 +358,21 @@
           if (article.className.indexOf("native-ad") >= 0) return;
           if (article.innerHTML.indexOf("whitetrafsa") >= 0) return;
 
-          var a = article.querySelector('a[href*="/video/"]');
+          // 视频 / 女優 / 片商 三种链接
+          var a = article.querySelector('a[href*="/video/"], a[href*="/pornstar/"], a[href*="/studio/"]');
           if (!a) return;
 
           var href = a.getAttribute("href") || "";
           var id = absoluteUrl(href);
+          if (!id || seen[id]) return;
+          seen[id] = true;
+
+          var isPerson = /\/pornstar\//i.test(href);
+          var isStudio = /\/studio\//i.test(href);
+          var isVideo = /\/video\//i.test(href);
 
           var title = "";
-          var headerSpan = article.querySelector("header.entry-header span");
+          var headerSpan = article.querySelector("header.entry-header span, .entry-header span, .cat-title, .actor-name, h2, h3");
           if (headerSpan) title = cleanText(headerSpan.textContent);
           if (!title) title = cleanText(a.getAttribute("title") || "");
           if (!title) {
@@ -384,8 +393,10 @@
 
           var sn = (title.match(/[A-Z]{2,12}-?\d{2,6}/i) || [])[0] || "";
 
-          if (!id || seen[id]) return;
-          seen[id] = true;
+          var remark = "BestJAV";
+          if (duration) remark = "时长 " + duration;
+          else if (isPerson) remark = "女優";
+          else if (isStudio) remark = "片商";
 
           items.push({
             id: id,
@@ -393,7 +404,8 @@
             sn: sn.toUpperCase(),
             pic: pic,
             duration: duration,
-            remark: duration ? ("时长 " + duration) : "BestJAV"
+            remark: remark,
+            type: isPerson ? "pornstar" : (isStudio ? "studio" : "video")
           });
         });
 
@@ -509,82 +521,67 @@
         var descMeta = doc.querySelector('meta[name="description"], meta[property="og:description"]');
         if (descMeta) desc = cleanText(descMeta.getAttribute("content"));
 
-        // ========== 播放地址提取（多策略） ==========
+        // 【修复】尝试多种方式提取播放地址（针对 streamhls.click 优化）
         var playUrl = "";
-        var mpuData = "";
-        var videoId = "";
-        var videoVer = "";
 
-        // 提取 data-mpu
-        var mpuEl = doc.querySelector('#video-player[data-mpu]');
-        if (mpuEl) mpuData = mpuEl.getAttribute('data-mpu') || "";
-
-        // 提取 video-id 和 video_ver
-        var playerArea = doc.querySelector('#video-player-area');
-        if (playerArea) {
-          videoId = playerArea.getAttribute('video-id') || "";
-          videoVer = playerArea.getAttribute('video_ver') || "";
-        }
-
-        // 策略1: 直接在 HTML 中查找 m3u8（部分缓存页面可能有）
+        // 方法1: 直接查找完整 m3u8（优先 master.m3u8）
         var m3u8Matches = html.match(/https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/gi) || [];
         if (m3u8Matches.length) {
-          var preferred = m3u8Matches.find(function(u) { return /master\.m3u8/i.test(u); })
-            || m3u8Matches[0];
-          playUrl = preferred;
+          var preferred = m3u8Matches.find(function (u) { return /master\.m3u8/i.test(u); })
+            || m3u8Matches.find(function (u) { return /index|playlist|1080|720|hd/i.test(u); });
+          playUrl = preferred || m3u8Matches[0];
         }
 
-        // 策略2: 查找 streamhls.click 路径
+        // 方法2: streamhls.click 完整路径（含 token）
         if (!playUrl) {
           var streamMatch = html.match(/https?:\/\/streamhls\.click\/hls\/[^\s"'<>\\]+/i);
           if (streamMatch) {
             playUrl = streamMatch[0];
+            // 如果只匹配到目录，自动补 master.m3u8
             if (!/\.m3u8/i.test(playUrl)) {
               playUrl = playUrl.replace(/\/?$/, "/") + "master.m3u8";
             }
           }
         }
 
-        // 策略3: 尝试从页面 JS 变量中提取（部分页面可能有）
+        // 方法3: 相对路径 /hls/xxx/yyy/ts/id/master.m3u8 或 index-v1-a1.m3u8
         if (!playUrl) {
-          var jsVarPatterns = [
-            /playerConfig\s*=\s*({[^}]+})/i,
-            /videoSource\s*=\s*["']([^"']+)["']/i,
-            /streamUrl\s*=\s*["']([^"']+)["']/i,
-            /hlsUrl\s*=\s*["']([^"']+)["']/i
-          ];
-          for (var i = 0; i < jsVarPatterns.length; i++) {
-            var match = html.match(jsVarPatterns[i]);
-            if (match) {
-              var extracted = match[1] || match[0];
-              var urlMatch = extracted.match(/https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/);
-              if (urlMatch) {
-                playUrl = urlMatch[0];
-                break;
-              }
-            }
+          var relMatch = html.match(/["'](\/?hls\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\/\d+\/\d+\/(?:master|index[^"']*)\.m3u8)["']/i);
+          if (relMatch) {
+            playUrl = "https://streamhls.click" + (relMatch[1].charAt(0) === "/" ? "" : "/") + relMatch[1];
           }
         }
 
-        // 策略4: 不再构造假地址，避免误导用户
-        // 真实的 streamhls 地址需要通过解密 data-mpu 或拦截播放器请求获取
+        // 方法4: 查找 videplay / player embed
+        if (!playUrl) {
+          var embedMatch = html.match(/https?:\/\/(?:api\.)?(?:videplay|streamhls|player)\.[a-z0-9.-]+\/(?:embed|v|play|player)\/[^\s"'<>]+/i);
+          if (embedMatch) playUrl = embedMatch[0];
+        }
 
-        // 策略5: 查找 iframe / embed / source
+        // 方法5: iframe src
         if (!playUrl) {
           var iframeMatch = html.match(/<iframe[^>]+src=["'](https?:\/\/[^"']+(?:embed|player|stream|hls)[^"']*)["']/i);
           if (iframeMatch) playUrl = iframeMatch[1];
         }
+
+        // 方法6: source / video 标签
         if (!playUrl) {
           var sourceMatch = html.match(/<(?:source|video)[^>]+src=["'](https?:\/\/[^"']+\.(?:m3u8|mp4)[^"']*)["']/i);
           if (sourceMatch) playUrl = sourceMatch[1];
         }
+
+        // 查找 data-mpu 属性（加密数据，暂存备用）
+        var mpuMatch = html.match(/data-mpu=["']([^"']+)["']/);
+        var mpuData = mpuMatch ? mpuMatch[1] : "";
 
         // 清理转义
         if (playUrl) {
           playUrl = playUrl
             .replace(/\\u002F/g, "/")
             .replace(/\\\//g, "/")
-            .replace(/&amp;/g, "&");
+            .replace(/&amp;/g, "&")
+            .replace(/\\"/g, "")
+            .replace(/\\'/g, "");
         }
 
         return {
@@ -595,8 +592,6 @@
           desc: desc,
           url: playUrl,
           mpuData: mpuData,
-          videoId: videoId,
-          videoVer: videoVer,
           pageUrl: item.id
         };
       }
@@ -640,7 +635,7 @@
         var hasDirect = !!(detail.url && detail.url.trim());
         var playButton = '<button class="btn primary focusable" id="playBtn" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>' + (hasDirect ? "立即播放" : "网页播放") + '</button>';
         var urlInfo = hasDirect
-          ? '<div class="detail-section" style="margin-top:10px"><div class="detail-section-title">播放地址</div><div class="detail-section-text" style="font-size:11px;word-break:break-all">' + escapeHtml(detail.url.slice(0, 120)) + (detail.url.length > 120 ? "..." : "") + '</div></div>'
+          ? '<div class="detail-section" style="margin-top:10px"><div class="detail-section-title">已解析到直链</div><div class="detail-section-text" style="font-size:11px;word-break:break-all">' + escapeHtml(detail.url.slice(0, 120)) + (detail.url.length > 120 ? "..." : "") + '</div></div>'
           : '<div class="detail-section" style="margin-top:10px"><div class="detail-section-title">提示</div><div class="detail-section-text">未提取到 m3u8，将使用网页播放</div></div>';
 
         var tags = [item.sn, detail.duration].filter(function (text, index, arr) {
@@ -874,7 +869,15 @@
           if (!card) return;
           state.focusKey = card.dataset.key || "";
           saveSnapshot();
-          openDetail(card.dataset.id);
+          var id = card.dataset.id || "";
+          // 女優 / 片商：进入其作品列表
+          if (/\/pornstar\//i.test(id) || /\/studio\//i.test(id)) {
+            var path = id.replace(HOST, "").replace(/^\//, "");
+            if (path && path.slice(-1) !== "/") path += "/";
+            switchCat(path);
+            return;
+          }
+          openDetail(id);
         });
         $("moreBtn").addEventListener("click", loadMore);
         $("searchForm").addEventListener("submit", function (event) {
