@@ -915,7 +915,7 @@
     <div class="cookie-modal">
       <h3>🔑 设置登录 Cookie</h3>
       <p style="color:var(--muted);font-size:12px;margin:0 0 8px;">
-        请从浏览器开发者工具中复制 javdb580.com 的完整 Cookie 字符串（例如：<code>key1=value1; key2=value2</code>）
+        网站开启了 Cloudflare 防护。请用浏览器打开 <b>javdb580.com</b>，通过「验证你是人类」后，在开发者工具 → Application/存储 → Cookies 中复制完整 Cookie（重点包含 <code>cf_clearance</code>），粘贴到下方。
       </p>
       <textarea id="cookieInput" placeholder="粘贴 Cookie 字符串…"></textarea>
       <div class="btn-row">
@@ -1253,27 +1253,59 @@
         return SITE_BASE + "/v/" + encodeURIComponent(vid);
       }
 
+      function isCloudflareChallenge(html) {
+        if (!html || typeof html !== "string") return false;
+        var lower = html.toLowerCase();
+        return lower.indexOf("just a moment") !== -1 ||
+               lower.indexOf("cf-browser-verification") !== -1 ||
+               lower.indexOf("challenge-platform") !== -1 ||
+               lower.indexOf("checking your browser") !== -1 ||
+               lower.indexOf("verify you are human") !== -1 ||
+               lower.indexOf("cf-challenge") !== -1;
+      }
+
       function fetchWithCache(url, options) {
         var reqOpts = options || {};
         if (!reqOpts.headers) reqOpts.headers = {};
         var fm = sdk();
 
+        // 补全常见浏览器请求头，降低被 Cloudflare 拦截概率
+        if (!reqOpts.headers["Accept"]) {
+          reqOpts.headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+        }
+        if (!reqOpts.headers["Accept-Language"]) {
+          reqOpts.headers["Accept-Language"] = "zh-CN,zh;q=0.9,en;q=0.8";
+        }
+        if (!reqOpts.headers["User-Agent"]) {
+          reqOpts.headers["User-Agent"] = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+        }
+        if (!reqOpts.headers["Referer"]) {
+          reqOpts.headers["Referer"] = SITE_BASE + "/";
+        }
+
         if (manualCookie) {
-          reqOpts.headers['Cookie'] = manualCookie;
+          reqOpts.headers["Cookie"] = manualCookie;
+        }
+
+        function handleHtml(html) {
+          if (isCloudflareChallenge(html)) {
+            throw new Error("CLOUDFLARE_CHALLENGE");
+          }
+          return html;
         }
 
         if (fm && fm.req) {
           reqOpts.credentials = "include";
           return fm.req(url, reqOpts).then(function (resp) {
             if (resp && resp.ok) {
-              return resp.body;
+              return handleHtml(resp.body);
             }
             throw new Error("fm.req failed: " + (resp ? resp.status : "no response"));
           });
         }
         return fetch(url, reqOpts).then(function (resp) {
           if (!resp.ok) throw new Error("fetch failed: " + resp.status);
-          return resp.text();
+          return resp.text().then(handleHtml);
         });
       }
 
@@ -1692,12 +1724,18 @@
         }).catch(function (err) {
           state.isLoading = false;
           log("loadActorsListData error", err);
-          statusBar.textContent = "加载失败，请重试";
+          var msg = "网络错误，请检查连接";
+          if (err && err.message === "CLOUDFLARE_CHALLENGE") {
+            msg = "检测到 Cloudflare 验证，请点击右上角 🔑 设置 Cookie 后重试";
+            statusBar.textContent = "需要 Cookie（Cloudflare 拦截）";
+          } else {
+            statusBar.textContent = "加载失败，请重试";
+          }
           var grid = document.getElementById("videoGrid");
           grid.replaceChildren();
           var errEl = document.createElement("div");
           errEl.className = "empty";
-          errEl.textContent = "网络错误，请检查连接";
+          errEl.textContent = msg;
           errEl.style.gridColumn = "1 / -1";
           grid.appendChild(errEl);
         });
@@ -1757,12 +1795,18 @@
         }).catch(function (err) {
           state.isLoading = false;
           log("loadActorVideosList error", err);
-          statusBar.textContent = "加载失败，请重试";
+          var msg = "网络错误";
+          if (err && err.message === "CLOUDFLARE_CHALLENGE") {
+            msg = "检测到 Cloudflare 验证，请点击右上角 🔑 设置 Cookie 后重试";
+            statusBar.textContent = "需要 Cookie（Cloudflare 拦截）";
+          } else {
+            statusBar.textContent = "加载失败，请重试";
+          }
           var grid = document.getElementById("videoGrid");
           grid.replaceChildren();
           var errEl = document.createElement("div");
           errEl.className = "empty";
-          errEl.textContent = "网络错误";
+          errEl.textContent = msg;
           errEl.style.gridColumn = "1 / -1";
           grid.appendChild(errEl);
         });
@@ -1818,12 +1862,18 @@
         }).catch(function (err) {
           state.isLoading = false;
           log("loadVideoList error", err);
-          statusBar.textContent = "加载失败，请重试";
+          var msg = "网络错误，请检查连接";
+          if (err && err.message === "CLOUDFLARE_CHALLENGE") {
+            msg = "检测到 Cloudflare 验证，请点击右上角 🔑 设置 Cookie 后重试";
+            statusBar.textContent = "需要 Cookie（Cloudflare 拦截）";
+          } else {
+            statusBar.textContent = "加载失败，请重试";
+          }
           var grid = document.getElementById("videoGrid");
           grid.replaceChildren();
           var errEl = document.createElement("div");
           errEl.className = "empty";
-          errEl.textContent = "网络错误，请检查连接";
+          errEl.textContent = msg;
           errEl.style.gridColumn = "1 / -1";
           grid.appendChild(errEl);
         });
