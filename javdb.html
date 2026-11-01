@@ -1142,12 +1142,39 @@
         });
       }
 
+      function normalizeCover(url) {
+        url = String(url || "").replace(/&amp;/g, "&").trim();
+        if (!url) return "";
+        if (url.indexOf("//") === 0) url = "https:" + url;
+        // 官方加密 CDN → 公开静态图床
+        url = url.replace(/^https?:\/\/[^/]+\/rhe951l4q/i, "https://c0.jdbstatic.com");
+        // 去掉可能残留的 @Referer
+        url = url.replace(/@Referer=.*$/, "");
+        return url;
+      }
+
+      function formatSize(v) {
+        if (v === undefined || v === null || v === "") return "";
+        if (typeof v === "string" && /[KMGTkmgt]/.test(v)) return v;
+        var n = Number(v);
+        if (!isFinite(n) || n <= 0) return String(v);
+        // API 常见返回 MB 数值；过大则按字节处理
+        if (n < 1024 * 1024) {
+          if (n >= 1024) return (n / 1024).toFixed(1).replace(/\.0$/, "") + " GB";
+          return n + " MB";
+        }
+        var u = ["B", "KB", "MB", "GB", "TB"];
+        var i = 0;
+        while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+        return (i === 0 ? n : n.toFixed(1).replace(/\.0$/, "")) + " " + u[i];
+      }
+
       function mapApiMovie(x) {
         x = x || {};
         var id = String(x.id || "");
         var number = cleanText(x.number || "");
         var title = cleanText(x.title || x.origin_title || number || id);
-        var cover = x.cover_url || x.thumb_url || "";
+        var cover = normalizeCover(x.cover_url || x.thumb_url || "");
         var score = x.score || x.rate || "";
         if (score) score = String(score);
         return {
@@ -1169,7 +1196,7 @@
         return {
           id: String(x.id || ""),
           name: cleanText(x.name_zht || x.name || ""),
-          avatar: x.avatar_url || x.cover_url || ""
+          avatar: normalizeCover(x.avatar_url || x.cover_url || "")
         };
       }
 
@@ -1588,10 +1615,12 @@
             function fetchDetail(vid) {
         return apiRequest("/api/v4/movies/" + encodeURIComponent(vid), {}).then(function (data) {
           var x = (data && data.movie) || data || {};
+          var number = cleanText(x.number || "");
+          var title = cleanText(x.title || x.origin_title || number || vid);
           var result = {
             vid: String(x.id || vid),
-            title: cleanText(x.title || x.origin_title || x.number || vid),
-            cover: x.cover_url || x.thumb_url || "",
+            title: number ? (number + " " + title) : title,
+            cover: normalizeCover(x.cover_url || x.thumb_url || ""),
             score: x.score || x.rate || "",
             date: cleanText(x.release_date || ""),
             magnets: []
@@ -1601,16 +1630,28 @@
             var list = (magData && magData.magnets) || [];
             for (var i = 0; i < list.length; i++) {
               var m = list[i] || {};
-              var hash = m.hash || "";
-              var url = hash ? ("magnet:?xt=urn:btih:" + hash) : (m.magnet_url || m.url || "");
+              var hash = String(m.hash || "").trim();
+              var url = "";
+              if (hash) {
+                // 去掉可能的 magnet 前缀，统一拼标准链接
+                hash = hash.replace(/^magnet:\?xt=urn:btih:/i, "");
+                url = "magnet:?xt=urn:btih:" + hash;
+              } else {
+                url = m.magnet_url || m.url || m.pikpak_url || "";
+              }
               if (!url) continue;
               var name = cleanText(m.name || m.title || hash || "magnet");
-              var size = cleanText(m.size || "");
+              var tags = [];
+              if (m.cnsub || m.has_cnsub || m.is_subtitle) tags.push("中字");
+              if (m.hd) tags.push("HD");
+              if (tags.length) name = name + " [" + tags.join("/") + "]";
+              var size = formatSize(m.size);
               var date = cleanText(m.created_at || m.date || "");
               result.magnets.push({ name: name, url: url, size: size, date: date });
             }
             return result;
-          }).catch(function () {
+          }).catch(function (err) {
+            log("magnets error", err && err.message || err);
             return result;
           });
         });
@@ -1618,10 +1659,11 @@
 
       function proxyImage(url) {
         if (!url) return "";
+        url = normalizeCover(url);
         var fm = sdk();
         if (fm && fm.res) {
           try {
-            return fm.res(url, { headers: { Referer: SITE_BASE } });
+            return fm.res(url, { headers: { Referer: "https://javdb.com/" } });
           } catch (e) {
             log("fm.res error", e);
           }
