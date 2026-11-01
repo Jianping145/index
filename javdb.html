@@ -1568,7 +1568,7 @@
         });
       }
 
-            function fetchActorsPage(subCategory, page, query) {
+                  function fetchActorsPage(subCategory, page, query) {
         if (query) {
           return apiRequest("/api/v2/search", {
             q: query,
@@ -1579,35 +1579,66 @@
             return list.map(mapApiActor);
           });
         }
-        // 推荐演员
-        var path = "/api/v1/actors/recommend";
-        var params = { page: page || 1, limit: CONFIG.pageSize };
-        // 有码/无码等用 actors 列表接口尝试
-        if (subCategory === "censored") {
-          path = "/api/v1/actors";
-          params.filter_by = "0";
-        } else if (subCategory === "uncensored") {
-          path = "/api/v1/actors";
-          params.filter_by = "1";
-        } else if (subCategory === "western") {
-          path = "/api/v1/actors";
-          params.filter_by = "2";
+
+        // 推荐：接口返回 new/monthly/recommend 三组
+        if (!subCategory || subCategory === "recommend") {
+          return apiRequest("/api/v1/actors/recommend", {
+            page: page || 1
+          }).then(function (data) {
+            data = data || {};
+            var seen = {};
+            var out = [];
+            var groups = ["recommend_actors", "monthly_actors", "new_actors"];
+            for (var g = 0; g < groups.length; g++) {
+              var arr = data[groups[g]] || [];
+              for (var i = 0; i < arr.length; i++) {
+                var a = mapApiActor(arr[i]);
+                if (!a.id || seen[a.id]) continue;
+                seen[a.id] = true;
+                out.push(a);
+              }
+            }
+            return out;
+          });
         }
-        return apiRequest(path, params).then(function (data) {
-          var list = (data && data.actors) || data || [];
-          if (!Array.isArray(list) && data && data.list) list = data.list;
-          if (!Array.isArray(list)) list = [];
+
+        // 有码/无码/欧美：用 actors 列表 type 参数
+        var typeMap = {
+          "censored": "0",
+          "uncensored": "1",
+          "western": "2"
+        };
+        var type = typeMap[subCategory] || "0";
+        return apiRequest("/api/v1/actors", {
+          page: page || 1,
+          limit: CONFIG.pageSize,
+          type: type
+        }).then(function (data) {
+          var list = (data && data.actors) || [];
           return list.map(mapApiActor);
+        }).catch(function () {
+          // 兜底：演员排行榜
+          return apiRequest("/api/v1/rankings/actors", {
+            page: page || 1,
+            type: type
+          }).then(function (data) {
+            var list = (data && data.actors) || [];
+            return list.map(mapApiActor);
+          });
         });
       }
 
-            function fetchActorVideos(actorId, page) {
-        return apiRequest("/api/v1/actors/" + encodeURIComponent(actorId), {
+                  function fetchActorVideos(actorId, page) {
+        // 演员作品走 movies/tags 过滤：0:a:{id}:
+        var filterBy = "0:a:" + actorId + ":";
+        return apiRequest("/api/v1/movies/tags", {
+          filter_by: filterBy,
+          sort_by: "release",
+          order_by: "desc",
           page: page || 1,
           limit: CONFIG.pageSize
         }).then(function (data) {
-          var list = (data && data.movies) || (data && data.videos) || [];
-          if (!Array.isArray(list)) list = [];
+          var list = (data && data.movies) || [];
           return list.map(mapApiMovie);
         });
       }
