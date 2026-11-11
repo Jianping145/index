@@ -1148,10 +1148,58 @@
         if (url.indexOf("//") === 0) url = "https:" + url;
         // 官方加密 CDN → 公开静态图床
         url = url.replace(/^https?:\/\/[^/]+\/rhe951l4q/i, "https://c0.jdbstatic.com");
+        url = url.replace("/small_covers/", "/covers/");
         // 去掉可能残留的 @Referer
         url = url.replace(/@Referer=.*$/, "");
         return url;
       }
+
+      var TRACKERS = [
+        "udp://tracker.opentrackr.org:1337/announce",
+        "udp://open.tracker.cl:1337/announce",
+        "udp://tracker.openbittorrent.com:6969/announce",
+        "udp://open.stealth.si:80/announce",
+        "udp://tracker.torrent.eu.org:451/announce",
+        "udp://exodus.desync.com:6969/announce",
+        "udp://tracker.moeking.me:6969/announce",
+        "udp://explodie.org:6969/announce",
+        "udp://tracker1.bt.moack.co.kr:80/announce",
+        "udp://tracker.tiny-vps.com:6969/announce",
+        "http://tracker.openbittorrent.com:80/announce",
+        "http://tracker.opentrackr.org:1337/announce"
+      ];
+
+      function magnetUrl(hash, name) {
+        hash = String(hash || "").trim().replace(/^magnet:\?xt=urn:btih:/i, "");
+        if (!hash) return "";
+        var url = "magnet:?xt=urn:btih:" + hash;
+        if (name) url += "&dn=" + encodeURIComponent(String(name));
+        for (var i = 0; i < TRACKERS.length; i++) {
+          url += "&tr=" + encodeURIComponent(TRACKERS[i]);
+        }
+        return url;
+      }
+
+      function sortMagnets(list) {
+        return (list || []).slice().sort(function (a, b) {
+          a = a || {}; b = b || {};
+          function score(m) {
+            var s = 0;
+            var fc = Number(m.files_count || 0);
+            var name = String(m.name || "").toLowerCase();
+            if (fc === 1) s += 100;
+            else if (fc > 0 && fc <= 3) s += 40;
+            if (/\.mp4|\.mkv|\.avi/.test(name)) s += 30;
+            if (m.cnsub || m.has_cnsub || m.is_subtitle) s += 20;
+            if (m.hd) s += 10;
+            var sz = Number(m.size || 0);
+            if (sz > 0 && sz < 2048) s += 5;
+            return s;
+          }
+          return score(b) - score(a);
+        });
+      }
+
 
       function formatSize(v) {
         if (v === undefined || v === null || v === "") return "";
@@ -1643,48 +1691,45 @@
         });
       }
 
-            function fetchDetail(vid) {
-        return apiRequest("/api/v4/movies/" + encodeURIComponent(vid), {}).then(function (data) {
-          var x = (data && data.movie) || data || {};
-          var number = cleanText(x.number || "");
-          var title = cleanText(x.title || x.origin_title || number || vid);
-          var result = {
-            vid: String(x.id || vid),
-            title: number ? (number + " " + title) : title,
-            cover: normalizeCover(x.cover_url || x.thumb_url || ""),
-            score: x.score || x.rate || "",
-            date: cleanText(x.release_date || ""),
-            magnets: []
-          };
-          // 再拉磁链
-          return apiRequest("/api/v1/movies/" + encodeURIComponent(vid) + "/magnets", {}).then(function (magData) {
-            var list = (magData && magData.magnets) || [];
-            for (var i = 0; i < list.length; i++) {
-              var m = list[i] || {};
-              var hash = String(m.hash || "").trim();
-              var url = "";
-              if (hash) {
-                // 去掉可能的 magnet 前缀，统一拼标准链接
-                hash = hash.replace(/^magnet:\?xt=urn:btih:/i, "");
-                url = "magnet:?xt=urn:btih:" + hash;
-              } else {
-                url = m.magnet_url || m.url || m.pikpak_url || "";
-              }
-              if (!url) continue;
-              var name = cleanText(m.name || m.title || hash || "magnet");
-              var tags = [];
-              if (m.cnsub || m.has_cnsub || m.is_subtitle) tags.push("中字");
-              if (m.hd) tags.push("HD");
-              if (tags.length) name = name + " [" + tags.join("/") + "]";
-              var size = formatSize(m.size);
-              var date = cleanText(m.created_at || m.date || "");
-              result.magnets.push({ name: name, url: url, size: size, date: date });
+            function fetchDetail(vid, fallbackTitle, fallbackCover) {
+        // v4 详情现已要求登录，改为：列表卡信息 + 磁链接口（无需登录）
+        var result = {
+          vid: String(vid || ""),
+          title: cleanText(fallbackTitle || vid || ""),
+          cover: normalizeCover(fallbackCover || "", vid),
+          score: "",
+          date: "",
+          magnets: []
+        };
+        return apiRequest("/api/v1/movies/" + encodeURIComponent(vid) + "/magnets", {}).then(function (magData) {
+          var list = sortMagnets((magData && magData.magnets) || []);
+          for (var i = 0; i < list.length; i++) {
+            var m = list[i] || {};
+            var hash = String(m.hash || "").trim().replace(/^magnet:\?xt=urn:btih:/i, "");
+            var url = "";
+            if (hash) {
+              url = magnetUrl(hash, m.name || m.title || "");
+            } else {
+              url = m.magnet_url || m.url || m.pikpak_url || "";
             }
-            return result;
-          }).catch(function (err) {
-            log("magnets error", err && err.message || err);
-            return result;
-          });
+            if (!url) continue;
+            var name = cleanText(m.name || m.title || hash || "magnet");
+            var tags = [];
+            var fc = Number(m.files_count || 0);
+            if (fc === 1) tags.push("单文件");
+            else if (fc > 1) tags.push(fc + "文件");
+            if (m.cnsub || m.has_cnsub || m.is_subtitle) tags.push("中字");
+            if (m.hd) tags.push("HD");
+            var size = formatSize(m.size);
+            if (size) tags.push(size);
+            if (tags.length) name = name + " [" + tags.join("/") + "]";
+            if (fc === 1 || /\.mp4|\.mkv/i.test(name)) name = "★ " + name;
+            result.magnets.push({ name: name, url: url, size: size, date: cleanText(m.created_at || m.date || "") });
+          }
+          return result;
+        }).catch(function (err) {
+          log("magnets error", err && err.message || err);
+          return result;
         });
       }
 
@@ -1934,7 +1979,7 @@
         loading.className = "loading";
         loading.textContent = "加载详情…";
         container.appendChild(loading);
-        fetchDetail(vid).then(function (data) {
+        fetchDetail(vid, title, fallbackCover).then(function (data) {
           if (token !== state.routeToken) return;
           if (!data || (!data.title && data.magnets.length === 0)) {
             container.replaceChildren();
