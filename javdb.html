@@ -1158,7 +1158,239 @@
         return "";
       }
 
-      function extractNumber(text) {
+      
+
+      var TRACKERS = [
+        "udp://tracker.opentrackr.org:1337/announce",
+        "udp://open.tracker.cl:1337/announce",
+        "udp://tracker.openbittorrent.com:6969/announce",
+        "udp://open.stealth.si:80/announce",
+        "udp://tracker.torrent.eu.org:451/announce",
+        "udp://exodus.desync.com:6969/announce",
+        "udp://tracker.moeking.me:6969/announce",
+        "udp://explodie.org:6969/announce",
+        "udp://tracker1.bt.moack.co.kr:80/announce",
+        "udp://tracker.tiny-vps.com:6969/announce",
+        "http://tracker.openbittorrent.com:80/announce",
+        "http://tracker.opentrackr.org:1337/announce"
+      ];
+
+      function magnetUrl(hash, name) {
+        hash = String(hash || "").trim().replace(/^magnet:\?xt=urn:btih:/i, "");
+        if (!hash) return "";
+        var url = "magnet:?xt=urn:btih:" + hash;
+        if (name) url += "&dn=" + encodeURIComponent(String(name));
+        for (var i = 0; i < TRACKERS.length; i++) {
+          url += "&tr=" + encodeURIComponent(TRACKERS[i]);
+        }
+        return url;
+      }
+
+      function sortMagnets(list) {
+        return (list || []).slice().sort(function (a, b) {
+          a = a || {}; b = b || {};
+          function score(m) {
+            var s = 0;
+            var fc = Number(m.files_count || 0);
+            var name = String(m.name || "").toLowerCase();
+            if (fc === 1) s += 100;
+            else if (fc > 0 && fc <= 3) s += 40;
+            if (/\.mp4|\.mkv|\.avi/.test(name)) s += 30;
+            if (m.cnsub || m.has_cnsub || m.is_subtitle) s += 20;
+            if (m.hd) s += 10;
+            var sz = Number(m.size || 0);
+            if (sz > 0 && sz < 2048) s += 5;
+            return s;
+          }
+          return score(b) - score(a);
+        });
+      }
+
+      function formatSize(v) {
+        if (v === undefined || v === null || v === "") return "";
+        if (typeof v === "string" && /[KMGTkmgt]/.test(v)) return v;
+        var n = Number(v);
+        if (!isFinite(n) || n <= 0) return String(v);
+        // API 常见返回 MB 数值；过大则按字节处理
+        if (n < 1024 * 1024) {
+          if (n >= 1024) return (n / 1024).toFixed(1).replace(/\.0$/, "") + " GB";
+          return n + " MB";
+        }
+        var u = ["B", "KB", "MB", "GB", "TB"];
+        var i = 0;
+        while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+        return (i === 0 ? n : n.toFixed(1).replace(/\.0$/, "")) + " " + u[i];
+      }
+
+      function mapApiMovie(x) {
+        x = x || {};
+        var id = String(x.id || "");
+        var number = cleanText(x.number || "");
+        var title = cleanText(x.title || x.origin_title || number || id);
+        var cover = normalizeCover(x.cover_url || x.thumb_url || "");
+        var score = x.score || x.rate || "";
+        if (score) score = String(score);
+        return {
+          vid: id,
+          title: number ? (number + " " + title) : title,
+          cover: cover,
+          score: score,
+          date: cleanText(x.release_date || ""),
+          hasMagnet: !!(x.magnets_count && Number(x.magnets_count) > 0),
+          hasSubtitle: !!(x.has_cnsub),
+          number: number,
+          magnetsCount: x.magnets_count || 0,
+          canPlay: !!x.can_play
+        };
+      }
+
+      function mapApiActor(x) {
+        x = x || {};
+        return {
+          id: String(x.id || ""),
+          name: cleanText(x.name_zht || x.name || ""),
+          avatar: normalizeCover(x.avatar_url || x.cover_url || "")
+        };
+      }
+
+      function fetchVideoList(catId, filterId, page, query) {
+        // 优先走官方 App API，绕过网页 Cloudflare
+        if (query) {
+          return apiRequest("/api/v2/search", {
+            q: query,
+            page: page || 1,
+            type: "movie",
+            movie_type: "all",
+            movie_sort_by: "relevance",
+            movie_filter_by: filterId === "playable" ? "can_play" : (filterId === "download" ? "magnets" : (filterId === "subtitle" ? "subtitle" : "all"))
+          }).then(function (data) {
+            var list = (data && data.movies) || [];
+            return list.map(mapApiMovie);
+          });
+        }
+
+        var typeMap = {
+          "hot": null,
+          "censored": "0",
+          "uncensored": "1",
+          "western": "2",
+          "fc2": "3",
+          "anime": "4"
+        };
+        var filterMap = {
+          "": "all",
+          "playable": "can_play",
+          "download": "magnets",
+          "subtitle": "subtitle"
+        };
+        var avail = filterMap[filterId] || "all";
+
+        if (!catId || catId === "hot") {
+          // 热播 / 推荐
+          return apiRequest("/api/v1/movies/recommend", {
+            page: page || 1,
+            limit: CONFIG.pageSize
+          }).then(function (data) {
+            var list = (data && data.movies) || data || [];
+            if (!Array.isArray(list) && data && data.list) list = data.list;
+            if (!Array.isArray(list)) list = [];
+            return list.map(mapApiMovie);
+          });
+        }
+
+        // 分类最新
+        var params = {
+          page: page || 1,
+          limit: CONFIG.pageSize,
+          type: typeMap[catId] != null ? typeMap[catId] : "all",
+          filter_by: avail,
+          sort_by: avail === "all" ? "release" : "update"
+        };
+        return apiRequest("/api/v1/movies/latest", params).then(function (data) {
+          var list = (data && data.movies) || data || [];
+          if (!Array.isArray(list) && data && data.list) list = data.list;
+          if (!Array.isArray(list)) list = [];
+          return list.map(mapApiMovie);
+        });
+      }
+
+      function fetchActorsPage(subCategory, page, query) {
+        if (query) {
+          return apiRequest("/api/v2/search", {
+            q: query,
+            page: page || 1,
+            type: "actor"
+          }).then(function (data) {
+            var list = (data && data.actors) || [];
+            return list.map(mapApiActor);
+          });
+        }
+
+        // 推荐：接口返回 new/monthly/recommend 三组
+        if (!subCategory || subCategory === "recommend") {
+          return apiRequest("/api/v1/actors/recommend", {
+            page: page || 1
+          }).then(function (data) {
+            data = data || {};
+            var seen = {};
+            var out = [];
+            var groups = ["recommend_actors", "monthly_actors", "new_actors"];
+            for (var g = 0; g < groups.length; g++) {
+              var arr = data[groups[g]] || [];
+              for (var i = 0; i < arr.length; i++) {
+                var a = mapApiActor(arr[i]);
+                if (!a.id || seen[a.id]) continue;
+                seen[a.id] = true;
+                out.push(a);
+              }
+            }
+            return out;
+          });
+        }
+
+        // 有码/无码/欧美：用 actors 列表 type 参数
+        var typeMap = {
+          "censored": "0",
+          "uncensored": "1",
+          "western": "2"
+        };
+        var type = typeMap[subCategory] || "0";
+        return apiRequest("/api/v1/actors", {
+          page: page || 1,
+          limit: CONFIG.pageSize,
+          type: type
+        }).then(function (data) {
+          var list = (data && data.actors) || [];
+          return list.map(mapApiActor);
+        }).catch(function () {
+          // 兜底：演员排行榜
+          return apiRequest("/api/v1/rankings/actors", {
+            page: page || 1,
+            type: type
+          }).then(function (data) {
+            var list = (data && data.actors) || [];
+            return list.map(mapApiActor);
+          });
+        });
+      }
+
+      function fetchActorVideos(actorId, page) {
+        // 演员作品走 movies/tags 过滤：0:a:{id}:
+        var filterBy = "0:a:" + actorId + ":";
+        return apiRequest("/api/v1/movies/tags", {
+          filter_by: filterBy,
+          sort_by: "release",
+          order_by: "desc",
+          page: page || 1,
+          limit: CONFIG.pageSize
+        }).then(function (data) {
+          var list = (data && data.movies) || [];
+          return list.map(mapApiMovie);
+        });
+      }
+
+
+function extractNumber(text) {
         text = String(text || "").toUpperCase();
         var m = text.match(/\b(FC2[-_]?PPV[-_]?\d{5,8})\b/) ||
                 text.match(/\b(FC2[-_]?\d{5,8})\b/) ||
