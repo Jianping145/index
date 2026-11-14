@@ -1202,30 +1202,69 @@
       function fetchMagnetsByNumber(number) {
         number = String(number || "").trim();
         if (!number) return Promise.resolve([]);
-        var url = "https://sukebei.nyaa.si/?page=rss&c=0_0&f=0&q=" + encodeURIComponent(number);
-        log("sukebei rss", url);
         var headers = {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Accept": "application/rss+xml, application/xml, text/xml, */*"
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "application/json, application/rss+xml, text/xml, text/html, */*"
         };
-        var fm = sdk();
-        var p;
-        try {
-          if (fm && fm.req) {
-            p = fm.req(url, { headers: headers, timeout: 12000 }).then(function (resp) {
-              return String((resp && (resp.body || resp.content || resp.data)) || "");
-            });
-          } else {
-            p = fetch(url, { headers: headers }).then(function (r) { return r.text(); });
-          }
-        } catch (e) {
-          return Promise.resolve([]);
+        function doReq(url) {
+          var fm = sdk();
+          try {
+            if (fm && fm.req) {
+              return fm.req(url, { headers: headers, timeout: 12000 }).then(function (resp) {
+                return String((resp && (resp.body || resp.content || resp.data)) || "");
+              }).catch(function () { return ""; });
+            }
+          } catch (e) {}
+          return fetch(url, { headers: headers }).then(function (r) { return r.text(); }).catch(function () { return ""; });
         }
-        return p.then(function (xml) {
-          return parseSukebeiRss(xml, number);
+        function fromSolid(jsonText) {
+          var items = [];
+          var seen = {};
+          try {
+            var j = JSON.parse(jsonText);
+            var list = (j && j.results) || (j && j.data) || [];
+            if (!Array.isArray(list)) list = [];
+            for (var i = 0; i < list.length; i++) {
+              var it = list[i] || {};
+              var hash = String(it.infohash || it.infoHash || it.hash || "").trim();
+              if (!hash || hash.length < 32 || seen[hash.toLowerCase()]) continue;
+              seen[hash.toLowerCase()] = 1;
+              var title = cleanText(it.title || it.name || number);
+              var size = "";
+              if (it.size) {
+                var n = Number(it.size);
+                if (n > 1024 * 1024) size = (n / (1024 * 1024 * 1024)).toFixed(2).replace(/\.00$/, "") + " GiB";
+                else size = String(it.size);
+              }
+              var tags = [];
+              if (/中字|字幕|-c\b|chinese/i.test(title)) tags.push("中字");
+              if (/\b(4k|2160p|1080p|720p)\b/i.test(title)) tags.push("HD");
+              var label = title;
+              if (tags.length) label = label + " [" + tags.join("/") + "]";
+              if (tags.indexOf("中字") >= 0) label = "★ " + label;
+              var seeds = it.seeders != null ? (" · 种子" + it.seeders) : "";
+              items.push({ name: label, url: magnetUrl(hash, title), size: size + seeds, date: "", source: "solid" });
+              if (items.length >= 20) break;
+            }
+          } catch (e) {
+            log("solid parse error", e && e.message || e);
+          }
+          return items;
+        }
+        var solidUrl = "https://solidtorrents.to/api/v1/search?q=" + encodeURIComponent(number) + "&category=all&sort=seeders";
+        var rssUrl = "https://sukebei.nyaa.si/?page=rss&c=0_0&f=0&q=" + encodeURIComponent(number);
+        log("magnet search", number);
+        return doReq(solidUrl).then(function (body) {
+          var items = fromSolid(body);
+          if (items.length) return items;
+          return doReq(rssUrl).then(function (xml) {
+            return parseSukebeiRss(xml, number);
+          });
         }).catch(function (e) {
-          log("sukebei error", e && e.message || e);
-          return [];
+          log("magnet search error", e && e.message || e);
+          return doReq(rssUrl).then(function (xml) {
+            return parseSukebeiRss(xml, number);
+          }).catch(function () { return []; });
         });
       }
 
@@ -1993,6 +2032,15 @@
         container.appendChild(hero);
         var magnetList = document.createElement("div");
         magnetList.className = "magnet-list";
+        var magHead = document.createElement("div");
+        magHead.className = "section-head";
+        var magH = document.createElement("h3");
+        magH.textContent = "磁力链接";
+        magHead.appendChild(magH);
+        var magS = document.createElement("span");
+        magS.textContent = (data.magnets && data.magnets.length) ? (data.magnets.length + " 条") : (data.magnetsLoading ? "搜索中" : "0");
+        magHead.appendChild(magS);
+        magnetList.appendChild(magHead);
         if (data.magnets && data.magnets.length > 0) {
           for (var i = 0; i < data.magnets.length; i++) {
             var mag = data.magnets[i];
@@ -2008,21 +2056,21 @@
             magMeta.className = "magnet-meta";
             var metaParts = [];
             if (mag.size) metaParts.push(mag.size);
+            if (mag.source) metaParts.push(mag.source);
             if (mag.date) metaParts.push(mag.date);
             magMeta.textContent = metaParts.join(" · ");
             magInfo.appendChild(magMeta);
             item.appendChild(magInfo);
             var playBtn = document.createElement("button");
             playBtn.className = "magnet-play";
-            playBtn.textContent = "App播放";
-            playBtn.setAttribute("data-magnet-url", mag.url);
+            playBtn.textContent = "播放";
             playBtn.tabIndex = 0;
-            playBtn.addEventListener("click", function (url, title) {
+            playBtn.addEventListener("click", (function (url, title) {
               return function (e) {
                 e.stopPropagation();
                 playMagnet(url, title);
               };
-            }(mag.url, data.title || vid));
+            })(mag.url, data.title || vid));
             item.appendChild(playBtn);
             magnetList.appendChild(item);
           }
@@ -2036,7 +2084,7 @@
           } else if (data.number) {
             noMag.textContent = "未找到磁链（" + data.number + "）";
           } else {
-            noMag.textContent = "暂无磁链";
+            noMag.textContent = "暂无磁链（标题中未识别到番号）";
           }
           magnetList.appendChild(noMag);
         }
