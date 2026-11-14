@@ -1142,16 +1142,92 @@
         });
       }
 
-      function normalizeCover(url) {
+      function normalizeCover(url, id) {
         url = String(url || "").replace(/&amp;/g, "&").trim();
-        if (!url) return "";
-        if (url.indexOf("//") === 0) url = "https:" + url;
-        // 官方加密 CDN → 公开静态图床
-        url = url.replace(/^https?:\/\/[^/]+\/rhe951l4q/i, "https://c0.jdbstatic.com");
-        url = url.replace("/small_covers/", "/covers/");
-        // 去掉可能残留的 @Referer
-        url = url.replace(/@Referer=.*$/, "");
-        return url;
+        if (url) {
+          if (url.indexOf("//") === 0) url = "https:" + url;
+          url = url.replace(/^https?:\/\/[^/]+\/rhe951l4q/i, "https://c0.jdbstatic.com");
+          url = url.replace("/small_covers/", "/covers/");
+          url = url.replace(/@Referer=.*$/, "");
+          return url;
+        }
+        if (id && String(id).length >= 2) {
+          var sid = String(id);
+          return "https://c0.jdbstatic.com/covers/" + sid.substring(0, 2).toLowerCase() + "/" + sid + ".jpg";
+        }
+        return "";
+      }
+
+      function extractNumber(text) {
+        text = String(text || "").toUpperCase();
+        var m = text.match(/\b([A-Z]{2,10}-?\d{2,5})\b/) || text.match(/\b(FC2-?(?:PPV-?)?\d{6,8})\b/);
+        return m ? m[1].replace(/PPV-/i, "").replace(/FC2(\d)/, "FC2-$1") : "";
+      }
+
+      function parseSukebeiMagnets(html, number) {
+        html = String(html || "");
+        var items = [];
+        var seen = {};
+        // rows: magnet links
+        var re = /<a[^>]*href="(magnet:\?xt=urn:btih:[a-fA-F0-9]{40}[^"]*)"[^>]*>[\s\S]*?<\/a>/gi;
+        var m;
+        while ((m = re.exec(html)) !== null) {
+          var url = m[1].replace(/&amp;/g, "&");
+          var hash = (url.match(/btih:([a-fA-F0-9]{40})/i) || [])[1];
+          if (!hash || seen[hash]) continue;
+          seen[hash] = 1;
+          // try get name from nearby
+          var slice = html.slice(Math.max(0, m.index - 500), m.index + 200);
+          var nameMatch = slice.match(/title="([^"]+)"/) || slice.match(/<a[^>]*href="\/view\/\d+"[^>]*>([^<]+)</);
+          var name = nameMatch ? cleanText(nameMatch[1]) : (number || hash);
+          if (number && name.toUpperCase().indexOf(String(number).split("-")[0].toUpperCase()) < 0 && items.length > 8) continue;
+          var size = "";
+          var sizeMatch = slice.match(/(\d+(?:\.\d+)?\s*(?:GiB|MiB|GB|MB))/i);
+          if (sizeMatch) size = sizeMatch[1];
+          var tags = [];
+          if (/\.(mp4|mkv)/i.test(name) || /单文件|single/i.test(name)) tags.push("单文件");
+          if (/-c\b|中字|subtitle|\bc\u5b57/i.test(name) || /-C\b/.test(name)) tags.push("中字");
+          if (/\b(4k|2160p|1080p|720p)\b/i.test(name)) tags.push("HD");
+          var label = name;
+          if (tags.length) label = label + " [" + tags.join("/") + "]";
+          if (tags.indexOf("单文件") >= 0) label = "★ " + label;
+          items.push({ name: label, url: magnetUrl(hash, name), size: size, date: "", source: "sukebei" });
+          if (items.length >= 20) break;
+        }
+        // sort: single file / hd first
+        items.sort(function (a, b) {
+          var sa = (a.name.indexOf("★") >= 0 ? 10 : 0) + (a.name.indexOf("中字") >= 0 ? 5 : 0);
+          var sb = (b.name.indexOf("★") >= 0 ? 10 : 0) + (b.name.indexOf("中字") >= 0 ? 5 : 0);
+          return sb - sa;
+        });
+        return items;
+      }
+
+      function fetchMagnetsByNumber(number) {
+        number = String(number || "").trim();
+        if (!number) return Promise.resolve([]);
+        var q = encodeURIComponent(number);
+        var url = "https://sukebei.nyaa.si/?f=0&c=0_0&q=" + q;
+        log("sukebei", url);
+        var fm = sdk();
+        var p;
+        var headers = {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html"
+        };
+        if (fm && fm.req) {
+          p = fm.req(url, { headers: headers, timeout: 20000 }).then(function (resp) {
+            return (resp && (resp.body || resp.content)) || "";
+          });
+        } else {
+          p = fetch(url, { headers: headers }).then(function (r) { return r.text(); });
+        }
+        return p.then(function (html) {
+          return parseSukebeiMagnets(html, number);
+        }).catch(function (e) {
+          log("sukebei error", e && e.message || e);
+          return [];
+        });
       }
 
       var TRACKERS = [
@@ -1692,26 +1768,25 @@
       }
 
             function fetchDetail(vid, fallbackTitle, fallbackCover) {
-        // v4 详情现已要求登录，改为：列表卡信息 + 磁链接口（无需登录）
+        // 官方详情/磁链现多需登录：列表信息 + 官方磁链(若可用) + Sukebei 番号兜底
         var result = {
           vid: String(vid || ""),
           title: cleanText(fallbackTitle || vid || ""),
           cover: normalizeCover(fallbackCover || "", vid),
           score: "",
           date: "",
-          magnets: []
+          magnets: [],
+          number: extractNumber(fallbackTitle || "")
         };
-        return apiRequest("/api/v1/movies/" + encodeURIComponent(vid) + "/magnets", {}).then(function (magData) {
+        var official = apiRequest("/api/v1/movies/" + encodeURIComponent(vid) + "/magnets", {}).then(function (magData) {
           var list = sortMagnets((magData && magData.magnets) || []);
+          var out = [];
           for (var i = 0; i < list.length; i++) {
             var m = list[i] || {};
             var hash = String(m.hash || "").trim().replace(/^magnet:\?xt=urn:btih:/i, "");
             var url = "";
-            if (hash) {
-              url = magnetUrl(hash, m.name || m.title || "");
-            } else {
-              url = m.magnet_url || m.url || m.pikpak_url || "";
-            }
+            if (hash) url = magnetUrl(hash, m.name || m.title || "");
+            else url = m.magnet_url || m.url || m.pikpak_url || "";
             if (!url) continue;
             var name = cleanText(m.name || m.title || hash || "magnet");
             var tags = [];
@@ -1724,12 +1799,26 @@
             if (size) tags.push(size);
             if (tags.length) name = name + " [" + tags.join("/") + "]";
             if (fc === 1 || /\.mp4|\.mkv/i.test(name)) name = "★ " + name;
-            result.magnets.push({ name: name, url: url, size: size, date: cleanText(m.created_at || m.date || "") });
+            out.push({ name: name, url: url, size: size, date: cleanText(m.created_at || m.date || ""), source: "jdb" });
           }
-          return result;
+          return out;
         }).catch(function (err) {
-          log("magnets error", err && err.message || err);
-          return result;
+          log("official magnets error", err && err.message || err);
+          return [];
+        });
+
+        return official.then(function (mags) {
+          if (mags && mags.length) {
+            result.magnets = mags;
+            return result;
+          }
+          var num = result.number || extractNumber(result.title) || "";
+          if (!num) return result;
+          result.number = num;
+          return fetchMagnetsByNumber(num).then(function (alt) {
+            result.magnets = alt || [];
+            return result;
+          });
         });
       }
 
@@ -1906,6 +1995,15 @@
         container.appendChild(hero);
         var magnetList = document.createElement("div");
         magnetList.className = "magnet-list";
+        var head = document.createElement("div");
+        head.className = "section-head";
+        var ht = document.createElement("h3");
+        ht.textContent = "磁力链接";
+        head.appendChild(ht);
+        var hs = document.createElement("span");
+        hs.textContent = (data.magnets && data.magnets.length ? data.magnets.length + " 条" : "0") + (data.number ? " · " + data.number : "");
+        head.appendChild(hs);
+        magnetList.appendChild(head);
         if (data.magnets && data.magnets.length > 0) {
           for (var i = 0; i < data.magnets.length; i++) {
             var mag = data.magnets[i];
@@ -1922,13 +2020,13 @@
             var metaParts = [];
             if (mag.size) metaParts.push(mag.size);
             if (mag.date) metaParts.push(mag.date);
+            if (mag.source) metaParts.push(mag.source);
             magMeta.textContent = metaParts.join(" · ");
             magInfo.appendChild(magMeta);
             item.appendChild(magInfo);
             var playBtn = document.createElement("button");
             playBtn.className = "magnet-play";
-            playBtn.textContent = "App播放";
-            playBtn.setAttribute("data-magnet-url", mag.url);
+            playBtn.textContent = "播放";
             playBtn.tabIndex = 0;
             playBtn.addEventListener("click", function (url, title) {
               return function (e) {
@@ -1942,7 +2040,7 @@
         } else {
           var noMag = document.createElement("div");
           noMag.className = "empty";
-          noMag.textContent = "暂无磁链";
+          noMag.textContent = "暂无磁链（官方接口需登录，且未搜到公开源）";
           magnetList.appendChild(noMag);
         }
         container.appendChild(magnetList);
