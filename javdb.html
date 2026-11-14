@@ -1209,21 +1209,25 @@
         var q = encodeURIComponent(number);
         var url = "https://sukebei.nyaa.si/?f=0&c=0_0&q=" + q;
         log("sukebei", url);
-        var fm = sdk();
-        var p;
         var headers = {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "text/html"
+          "Accept": "text/html,application/xhtml+xml"
         };
-        if (fm && fm.req) {
-          p = fm.req(url, { headers: headers, timeout: 20000 }).then(function (resp) {
-            return (resp && (resp.body || resp.content)) || "";
-          });
-        } else {
-          p = fetch(url, { headers: headers }).then(function (r) { return r.text(); });
+        var fm = sdk();
+        var p;
+        try {
+          if (fm && fm.req) {
+            p = fm.req(url, { headers: headers, timeout: 12000 }).then(function (resp) {
+              return (resp && (resp.body || resp.content || resp.data)) || "";
+            });
+          } else {
+            p = fetch(url, { headers: headers }).then(function (r) { return r.text(); });
+          }
+        } catch (e) {
+          return Promise.resolve([]);
         }
         return p.then(function (html) {
-          return parseSukebeiMagnets(html, number);
+          return parseSukebeiMagnets(String(html || ""), number);
         }).catch(function (e) {
           log("sukebei error", e && e.message || e);
           return [];
@@ -1768,7 +1772,6 @@
       }
 
             function fetchDetail(vid, fallbackTitle, fallbackCover) {
-        // 官方详情/磁链现多需登录：列表信息 + 官方磁链(若可用) + Sukebei 番号兜底
         var result = {
           vid: String(vid || ""),
           title: cleanText(fallbackTitle || vid || ""),
@@ -1778,15 +1781,14 @@
           magnets: [],
           number: extractNumber(fallbackTitle || "")
         };
+        // 官方磁链（可能需登录）
         var official = apiRequest("/api/v1/movies/" + encodeURIComponent(vid) + "/magnets", {}).then(function (magData) {
           var list = sortMagnets((magData && magData.magnets) || []);
           var out = [];
           for (var i = 0; i < list.length; i++) {
             var m = list[i] || {};
             var hash = String(m.hash || "").trim().replace(/^magnet:\?xt=urn:btih:/i, "");
-            var url = "";
-            if (hash) url = magnetUrl(hash, m.name || m.title || "");
-            else url = m.magnet_url || m.url || m.pikpak_url || "";
+            var url = hash ? magnetUrl(hash, m.name || m.title || "") : (m.magnet_url || m.url || m.pikpak_url || "");
             if (!url) continue;
             var name = cleanText(m.name || m.title || hash || "magnet");
             var tags = [];
@@ -1815,10 +1817,18 @@
           var num = result.number || extractNumber(result.title) || "";
           if (!num) return result;
           result.number = num;
-          return fetchMagnetsByNumber(num).then(function (alt) {
+          // 公开源兜底，限时避免一直转圈
+          return Promise.race([
+            fetchMagnetsByNumber(num),
+            new Promise(function (resolve) { setTimeout(function () { resolve([]); }, 10000); })
+          ]).then(function (alt) {
             result.magnets = alt || [];
             return result;
+          }).catch(function () {
+            return result;
           });
+        }).catch(function () {
+          return result;
         });
       }
 
@@ -2066,36 +2076,44 @@
         state.detailVid = vid;
         state.routeToken++;
         var token = state.routeToken;
-        history.pushState({ type: "detail", vid: vid }, "", "#detail=" + vid);
+        try { history.pushState({ type: "detail", vid: vid }, "", "#detail=" + vid); } catch (e) {}
         document.body.classList.add("detail-active");
         var sheet = document.getElementById("detailSheet");
         sheet.classList.add("active");
         sheet.scrollTop = 0;
         var container = document.getElementById("detailContent");
         container.replaceChildren();
-        var loading = document.createElement("div");
-        loading.className = "loading";
-        loading.textContent = "加载详情…";
-        container.appendChild(loading);
+        // 先渲染基本信息，避免整页空白
+        var shell = {
+          vid: String(vid || ""),
+          title: cleanText(title || vid || ""),
+          cover: normalizeCover(fallbackCover || "", vid),
+          score: "",
+          date: "",
+          magnets: [],
+          number: extractNumber(title || "")
+        };
+        renderDetail(shell, vid, fallbackCover);
+        // 磁链异步补齐
         fetchDetail(vid, title, fallbackCover).then(function (data) {
           if (token !== state.routeToken) return;
-          if (!data || (!data.title && data.magnets.length === 0)) {
-            container.replaceChildren();
-            var err = document.createElement("div");
-            err.className = "empty";
-            err.textContent = "暂无数据，可能需登录后查看";
-            container.appendChild(err);
-            return;
-          }
+          if (!data) data = shell;
+          if (!data.title) data.title = shell.title;
+          if (!data.cover) data.cover = shell.cover;
           renderDetail(data, vid, fallbackCover);
         }).catch(function (err) {
           if (token !== state.routeToken) return;
           log("fetchDetail error", err);
-          container.replaceChildren();
-          var errEl = document.createElement("div");
-          errEl.className = "empty";
-          errEl.textContent = "加载失败: " + (err.message || "网络错误");
-          container.appendChild(errEl);
+          // 保留已渲染的基本信息
+          try {
+            var list = document.querySelector(".magnet-list");
+            if (list) {
+              var tip = document.createElement("div");
+              tip.className = "empty";
+              tip.textContent = "磁链加载失败: " + (err && err.message ? err.message : "网络错误");
+              list.appendChild(tip);
+            }
+          } catch (e) {}
         });
       }
 
