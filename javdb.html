@@ -1099,8 +1099,7 @@
           "jdsignature": apiSignature(),
           "User-Agent": CONFIG.apiUA,
           "Accept": "application/json",
-          "Accept-Language": "zh-TW,zh;q=0.9",
-          "Host": "jdforrepam.com"
+          "Accept-Language": "zh-TW,zh;q=0.9"
         };
       }
 
@@ -1158,7 +1157,77 @@
         return "";
       }
 
-      
+      function extractNumber(text) {
+        text = String(text || "").toUpperCase();
+        var m = text.match(/\b(FC2[-_]?PPV[-_]?\d{5,8})\b/) ||
+                text.match(/\b(FC2[-_]?\d{5,8})\b/) ||
+                text.match(/\b([A-Z]{2,10}-\d{2,5})\b/) ||
+                text.match(/\b([A-Z]{2,10}\d{3,5})\b/);
+        if (!m) return "";
+        var n = m[1].replace(/_/g, "-").replace(/PPV-/i, "");
+        n = n.replace(/^FC2(\d)/, "FC2-$1");
+        if (/^[A-Z]+\d+$/.test(n) && n.indexOf("-") < 0) {
+          n = n.replace(/([A-Z]+)(\d+)/, "$1-$2");
+        }
+        return n;
+      }
+
+      function parseSukebeiRss(xml, number) {
+        xml = String(xml || "");
+        var items = [];
+        var seen = {};
+        var blocks = xml.split(/<item>/i);
+        for (var i = 1; i < blocks.length; i++) {
+          var block = blocks[i];
+          var hash = (block.match(/<nyaa:infoHash>\s*([a-fA-F0-9]{40})\s*<\/nyaa:infoHash>/i) || [])[1];
+          if (!hash) continue;
+          hash = hash.toLowerCase();
+          if (seen[hash]) continue;
+          seen[hash] = 1;
+          var title = (block.match(/<title>([\s\S]*?)<\/title>/i) || [])[1] || "";
+          title = cleanText(title.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"'));
+          var size = cleanText((block.match(/<nyaa:size>\s*([^<]+)\s*<\/nyaa:size>/i) || [])[1] || "");
+          var tags = [];
+          if (/-c\b|中字|字幕|chinese/i.test(title)) tags.push("中字");
+          if (/\b(4k|2160p|1080p|720p)\b/i.test(title)) tags.push("HD");
+          var label = title || (number + " " + hash.slice(0, 8));
+          if (tags.length) label = label + " [" + tags.join("/") + "]";
+          if (tags.indexOf("中字") >= 0) label = "★ " + label;
+          items.push({ name: label, url: magnetUrl(hash, title || number), size: size, date: "", source: "sukebei" });
+          if (items.length >= 20) break;
+        }
+        return items;
+      }
+
+      function fetchMagnetsByNumber(number) {
+        number = String(number || "").trim();
+        if (!number) return Promise.resolve([]);
+        var url = "https://sukebei.nyaa.si/?page=rss&c=0_0&f=0&q=" + encodeURIComponent(number);
+        log("sukebei rss", url);
+        var headers = {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "application/rss+xml, application/xml, text/xml, */*"
+        };
+        var fm = sdk();
+        var p;
+        try {
+          if (fm && fm.req) {
+            p = fm.req(url, { headers: headers, timeout: 12000 }).then(function (resp) {
+              return String((resp && (resp.body || resp.content || resp.data)) || "");
+            });
+          } else {
+            p = fetch(url, { headers: headers }).then(function (r) { return r.text(); });
+          }
+        } catch (e) {
+          return Promise.resolve([]);
+        }
+        return p.then(function (xml) {
+          return parseSukebeiRss(xml, number);
+        }).catch(function (e) {
+          log("sukebei error", e && e.message || e);
+          return [];
+        });
+      }
 
       var TRACKERS = [
         "udp://tracker.opentrackr.org:1337/announce",
@@ -1206,6 +1275,7 @@
         });
       }
 
+
       function formatSize(v) {
         if (v === undefined || v === null || v === "") return "";
         if (typeof v === "string" && /[KMGTkmgt]/.test(v)) return v;
@@ -1251,6 +1321,313 @@
           name: cleanText(x.name_zht || x.name || ""),
           avatar: normalizeCover(x.avatar_url || x.cover_url || "")
         };
+      }
+
+      var CATEGORIES = [
+        { id: "hot", label: "热播" },
+        { id: "censored", label: "有码" },
+        { id: "uncensored", label: "无码" },
+        { id: "western", label: "欧美" },
+        { id: "fc2", label: "FC2" },
+        { id: "anime", label: "动漫" },
+        { id: "actors", label: "🎬 女优" }
+      ];
+      var FILTERS = [
+        { id: "", label: "全部" },
+        { id: "playable", label: "可播放" },
+        { id: "download", label: "含磁链" },
+        { id: "subtitle", label: "含字幕" }
+      ];
+      var CATEGORY_URL_MAP = {
+        "hot": "/",
+        "censored": "/censored",
+        "uncensored": "/uncensored",
+        "western": "/western",
+        "fc2": "/fc2",
+        "anime": "/anime",
+        "actors": "/actors"
+      };
+      var FILTER_PARAM_MAP = {
+        "playable": "f=playable",
+        "download": "f=download",
+        "subtitle": "f=subtitle"
+      };
+
+      function log() {
+        if (window.fm && fm.log) {
+          var args = Array.prototype.slice.call(arguments);
+          fm.log("[javdb-home] " + args.join(" "));
+        }
+        console.log.apply(console, ["[javdb-home]"].concat(Array.prototype.slice.call(arguments)));
+      }
+      function toast(msg) {
+        if (window.fm && fm.toast) {
+          fm.toast(msg);
+        }
+        log("[toast]", msg);
+      }
+      function sdk() {
+        if (window.fm) return window.fm;
+        return null;
+      }
+      function waitForSdk(timeout) {
+        return new Promise(function (resolve) {
+          if (window.fm) { resolve(true); return; }
+          if (!window.fongmiBridge) { resolve(false); return; }
+          var done = false;
+          var finish = function () {
+            if (done) return;
+            done = true;
+            window.removeEventListener("fmsdk", finish);
+            resolve(!!window.fm);
+          };
+          window.addEventListener("fmsdk", finish);
+          setTimeout(finish, timeout == null ? 2000 : timeout);
+        });
+      }
+      function cleanText(raw) {
+        if (!raw) return "";
+        return raw.replace(/[\s\u00A0]+/g, " ").replace(/^\s+|\s+$/g, "");
+      }
+      function extractVidFromUrl(url) {
+        var m = url.match(/\/v\/([^\/?#]+)/);
+        return m ? m[1] : null;
+      }
+      function absoluteUrl(relative) {
+        if (!relative) return "";
+        if (relative.startsWith("http")) return relative;
+        if (relative.startsWith("//")) return "https:" + relative;
+        return SITE_BASE + (relative.startsWith("/") ? "" : "/") + relative;
+      }
+      function parseHtml(html) {
+        if (!html || typeof html !== "string") return null;
+        try {
+          var doc = new DOMParser().parseFromString(html, "text/html");
+          return doc;
+        } catch (e) {
+          log("parseHtml error", e && e.message || e);
+          return null;
+        }
+      }
+
+      function parseVideoCards(doc) {
+        if (!doc) return [];
+        var items = [];
+        var gridItems = doc.querySelectorAll(".grid-item, .movie-list .item, .videos .item");
+        if (gridItems.length === 0) {
+          gridItems = doc.querySelectorAll("a[href*='/v/']");
+        }
+        var seen = {};
+        for (var i = 0; i < gridItems.length; i++) {
+          var el = gridItems[i];
+          var linkEl = el.tagName === "A" ? el : el.querySelector("a[href*='/v/']");
+          if (!linkEl) continue;
+          var href = linkEl.getAttribute("href");
+          var vid = extractVidFromUrl(href);
+          if (!vid) continue;
+          if (seen[vid]) continue;
+          seen[vid] = true;
+          var imgEl = el.querySelector("img");
+          var coverUrl = imgEl ? absoluteUrl(imgEl.getAttribute("src") || imgEl.getAttribute("data-src") || "") : "";
+          var titleEl = el.querySelector(".video-title, .uid, .item-title, strong");
+          var title = cleanText(titleEl ? titleEl.textContent : vid);
+          var scoreEl = el.querySelector(".score, .meta .score, .value");
+          var score = "";
+          if (scoreEl) {
+            score = cleanText(scoreEl.textContent).replace(/分.*$/, "");
+          }
+          var dateEl = el.querySelector(".meta, .date, time");
+          var date = dateEl ? cleanText(dateEl.textContent) : "";
+          var hasMagnet = false;
+          var hasSubtitle = false;
+          var tags = el.querySelectorAll(".tag, .label");
+          for (var t = 0; t < tags.length; t++) {
+            var tagText = cleanText(tags[t].textContent);
+            if (tagText.indexOf("磁") !== -1) hasMagnet = true;
+            if (tagText.indexOf("字") !== -1) hasSubtitle = true;
+          }
+          var textAll = el.textContent || "";
+          if (textAll.indexOf("含磁") !== -1 || textAll.indexOf("磁鏈") !== -1) hasMagnet = true;
+          if (textAll.indexOf("字幕") !== -1 || textAll.indexOf("中字") !== -1) hasSubtitle = true;
+          items.push({
+            vid: vid,
+            title: title,
+            cover: coverUrl,
+            score: score,
+            date: date,
+            hasMagnet: hasMagnet,
+            hasSubtitle: hasSubtitle
+          });
+          if (items.length >= CONFIG.pageSize) break;
+        }
+        return items;
+      }
+
+      function parseActorList(html) {
+        var doc = parseHtml(html);
+        if (!doc) return [];
+        var actors = [];
+        var actorBoxes = doc.querySelectorAll(".actor-box");
+        if (actorBoxes.length === 0) {
+          actorBoxes = doc.querySelectorAll("a[href*='/actors/']");
+        }
+        var seen = {};
+        for (var i = 0; i < actorBoxes.length; i++) {
+          var box = actorBoxes[i];
+          var linkEl = box.tagName === "A" ? box : box.querySelector("a[href*='/actors/']");
+          if (!linkEl) continue;
+          var href = linkEl.getAttribute("href");
+          var actorId = href.replace("/actors/", "").replace(/\/$/, "").split("?")[0];
+          if (!actorId || actorId === "censored" || actorId === "uncensored" || actorId === "western" || actorId === "search") continue;
+          if (seen[actorId]) continue;
+          seen[actorId] = true;
+          var nameEl = linkEl.querySelector("strong") || linkEl;
+          var name = cleanText(nameEl.textContent);
+          if (!name) {
+            var titleAttr = linkEl.getAttribute("title");
+            name = titleAttr ? cleanText(titleAttr.split(",")[0]) : actorId;
+          }
+          var imgEl = linkEl.querySelector("img.avatar") || linkEl.querySelector("img");
+          var avatar = imgEl ? absoluteUrl(imgEl.getAttribute("src") || imgEl.getAttribute("data-src") || "") : "";
+          actors.push({ id: actorId, name: name, avatar: avatar });
+        }
+        return actors;
+      }
+
+      function parseDetailPage(doc) {
+        if (!doc) return null;
+        var result = {
+          vid: "",
+          title: "",
+          cover: "",
+          score: "",
+          date: "",
+          magnets: []
+        };
+        var titleEl = doc.querySelector(".video-title, h1, .title");
+        if (titleEl) result.title = cleanText(titleEl.textContent);
+        var imgEl = doc.querySelector(".video-cover img, .cover img, .video-poster img, .movie-poster img, img.img-thumbnail, .panel-block img, img[src*='/covers/'], img[src*='/thumbs/'], img.cover-image");
+        if (imgEl) result.cover = absoluteUrl(imgEl.getAttribute("src") || imgEl.getAttribute("data-src") || "");
+        var scoreEl = doc.querySelector(".score, .star-num");
+        if (scoreEl) result.score = cleanText(scoreEl.textContent);
+        var magnetItems = doc.querySelectorAll(".magnet-item, .magnet-list .item, .panel-block");
+        for (var i = 0; i < magnetItems.length; i++) {
+          var mi = magnetItems[i];
+          var magLink = mi.querySelector("a[href*='magnet:']");
+          if (!magLink) continue;
+          var magnetUrl = magLink.getAttribute("href");
+          if (!magnetUrl) continue;
+          var nameEl = mi.querySelector(".magnet-name, .name, a[href*='magnet:']");
+          var name = cleanText(nameEl ? nameEl.textContent : magnetUrl.substring(0, 80));
+          var sizeEl = mi.querySelector(".magnet-size, .size");
+          var size = sizeEl ? cleanText(sizeEl.textContent) : "";
+          var dateEl = mi.querySelector(".magnet-date, .date");
+          var date = dateEl ? cleanText(dateEl.textContent) : "";
+          result.magnets.push({
+            name: name,
+            url: magnetUrl,
+            size: size,
+            date: date
+          });
+        }
+        if (result.magnets.length === 0) {
+          var allMagLinks = doc.querySelectorAll("a[href*='magnet:']");
+          for (var j = 0; j < allMagLinks.length; j++) {
+            var url = allMagLinks[j].getAttribute("href");
+            if (!url) continue;
+            result.magnets.push({
+              name: url.substring(0, 80),
+              url: url,
+              size: "",
+              date: ""
+            });
+          }
+        }
+        return result;
+      }
+
+      function buildCategoryUrl(catId, filterId, page, query) {
+        var path;
+        if (query) {
+          path = "/search";
+        } else if (catId && catId !== "hot") {
+          path = CATEGORY_URL_MAP[catId] || "/";
+        } else {
+          path = "/";
+        }
+        var params = [];
+        if (query) {
+          params.push("q=" + encodeURIComponent(query));
+        }
+        if (filterId && FILTER_PARAM_MAP[filterId]) {
+          params.push(FILTER_PARAM_MAP[filterId]);
+        }
+        if (page && page > 1) {
+          params.push("page=" + page);
+        }
+        if (params.length > 0) {
+          return SITE_BASE + path + (path.indexOf("?") >= 0 ? "&" : "?") + params.join("&");
+        }
+        return SITE_BASE + path;
+      }
+      function buildDetailUrl(vid) {
+        return SITE_BASE + "/v/" + encodeURIComponent(vid);
+      }
+
+      function isCloudflareChallenge(html) {
+        if (!html || typeof html !== "string") return false;
+        var lower = html.toLowerCase();
+        return lower.indexOf("just a moment") !== -1 ||
+               lower.indexOf("cf-browser-verification") !== -1 ||
+               lower.indexOf("challenge-platform") !== -1 ||
+               lower.indexOf("checking your browser") !== -1 ||
+               lower.indexOf("verify you are human") !== -1 ||
+               lower.indexOf("cf-challenge") !== -1;
+      }
+
+      function fetchWithCache(url, options) {
+        var reqOpts = options || {};
+        if (!reqOpts.headers) reqOpts.headers = {};
+        var fm = sdk();
+
+        // 补全常见浏览器请求头，降低被 Cloudflare 拦截概率
+        if (!reqOpts.headers["Accept"]) {
+          reqOpts.headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+        }
+        if (!reqOpts.headers["Accept-Language"]) {
+          reqOpts.headers["Accept-Language"] = "zh-CN,zh;q=0.9,en;q=0.8";
+        }
+        if (!reqOpts.headers["User-Agent"]) {
+          reqOpts.headers["User-Agent"] = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+        }
+        if (!reqOpts.headers["Referer"]) {
+          reqOpts.headers["Referer"] = SITE_BASE + "/";
+        }
+
+        if (manualCookie) {
+          reqOpts.headers["Cookie"] = manualCookie;
+        }
+
+        function handleHtml(html) {
+          if (isCloudflareChallenge(html)) {
+            throw new Error("CLOUDFLARE_CHALLENGE");
+          }
+          return html;
+        }
+
+        if (fm && fm.req) {
+          reqOpts.credentials = "include";
+          return fm.req(url, reqOpts).then(function (resp) {
+            if (resp && resp.ok) {
+              return handleHtml(resp.body);
+            }
+            throw new Error("fm.req failed: " + (resp ? resp.status : "no response"));
+          });
+        }
+        return fetch(url, reqOpts).then(function (resp) {
+          if (!resp.ok) throw new Error("fetch failed: " + resp.status);
+          return resp.text().then(handleHtml);
+        });
       }
 
       function fetchVideoList(catId, filterId, page, query) {
@@ -1314,7 +1691,7 @@
         });
       }
 
-      function fetchActorsPage(subCategory, page, query) {
+                  function fetchActorsPage(subCategory, page, query) {
         if (query) {
           return apiRequest("/api/v2/search", {
             q: query,
@@ -1374,7 +1751,7 @@
         });
       }
 
-      function fetchActorVideos(actorId, page) {
+                  function fetchActorVideos(actorId, page) {
         // 演员作品走 movies/tags 过滤：0:a:{id}:
         var filterBy = "0:a:" + actorId + ":";
         return apiRequest("/api/v1/movies/tags", {
@@ -1389,120 +1766,7 @@
         });
       }
 
-
-function extractNumber(text) {
-        text = String(text || "").toUpperCase();
-        var m = text.match(/\b(FC2[-_]?PPV[-_]?\d{5,8})\b/) ||
-                text.match(/\b(FC2[-_]?\d{5,8})\b/) ||
-                text.match(/\b([A-Z]{2,10}-\d{2,5})\b/) ||
-                text.match(/\b([A-Z]{2,10}\d{3,5})\b/);
-        if (!m) return "";
-        var n = m[1].replace(/_/g, "-").replace(/PPV-/i, "");
-        n = n.replace(/^FC2(\d)/, "FC2-$1");
-        if (/^[A-Z]+\d+$/.test(n) && n.indexOf("-") < 0) {
-          n = n.replace(/([A-Z]+)(\d+)/, "$1-$2");
-        }
-        return n;
-      }
-
-      function parseSukebeiRss(xml, number) {
-        xml = String(xml || "");
-        var items = [];
-        var seen = {};
-        var blocks = xml.split(/<item>/i);
-        for (var i = 1; i < blocks.length; i++) {
-          var block = blocks[i];
-          var hash = (block.match(/<nyaa:infoHash>\s*([a-fA-F0-9]{40})\s*<\/nyaa:infoHash>/i) || [])[1];
-          if (!hash) hash = (block.match(/\b([a-fA-F0-9]{40})\b/) || [])[1];
-          if (!hash || seen[hash.toLowerCase()]) continue;
-          seen[hash.toLowerCase()] = 1;
-          var title = (block.match(/<title>([\s\S]*?)<\/title>/i) || [])[1] || "";
-          title = cleanText(title.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"'));
-          var size = (block.match(/<nyaa:size>\s*([^<]+)\s*<\/nyaa:size>/i) || [])[1] || "";
-          size = cleanText(size);
-          var tags = [];
-          if (/-c\b|中字|字幕|chinese|ch[_\s-]?sub/i.test(title)) tags.push("中字");
-          if (/\b(4k|2160p|1080p|720p)\b/i.test(title)) tags.push("HD");
-          if (/\.mp4|\.mkv|单文件/i.test(title)) tags.push("单文件");
-          var label = title || (number + " " + hash.slice(0, 8));
-          if (tags.length) label = label + " [" + tags.join("/") + "]";
-          if (tags.indexOf("单文件") >= 0 || tags.indexOf("中字") >= 0) label = "★ " + label;
-          items.push({
-            name: label,
-            url: magnetUrl(hash, title || number),
-            size: size,
-            date: "",
-            source: "sukebei"
-          });
-          if (items.length >= 24) break;
-        }
-        items.sort(function (a, b) {
-          var sa = (a.name.indexOf("★") >= 0 ? 10 : 0) + (a.name.indexOf("中字") >= 0 ? 5 : 0);
-          var sb = (b.name.indexOf("★") >= 0 ? 10 : 0) + (b.name.indexOf("中字") >= 0 ? 5 : 0);
-          return sb - sa;
-        });
-        return items;
-      }
-
-      function parseSukebeiHtml(html, number) {
-        html = String(html || "");
-        var items = [];
-        var seen = {};
-        var re = /href="(magnet:\?xt=urn:btih:([a-fA-F0-9]{40})[^"]*)"/gi;
-        var m;
-        while ((m = re.exec(html)) !== null) {
-          var full = m[1].replace(/&amp;/g, "&");
-          var hash = m[2];
-          if (!hash || seen[hash.toLowerCase()]) continue;
-          seen[hash.toLowerCase()] = 1;
-          var slice = html.slice(Math.max(0, m.index - 800), m.index);
-          var nameMatch = slice.match(/title="([^"]{5,200})"/) || slice.match(/<a href="\/view\/\d+"[^>]*>([^<]{5,200})</);
-          var name = nameMatch ? cleanText(nameMatch[1]) : (number || hash);
-          var size = "";
-          var sizeMatch = slice.match(/(\d+(?:\.\d+)?\s*(?:GiB|MiB|GB|MB))/i);
-          if (sizeMatch) size = sizeMatch[1];
-          items.push({ name: name, url: magnetUrl(hash, name), size: size, date: "", source: "sukebei" });
-          if (items.length >= 24) break;
-        }
-        return items;
-      }
-
-      function fetchMagnetsByNumber(number) {
-        number = String(number || "").trim();
-        if (!number) return Promise.resolve([]);
-        var q = encodeURIComponent(number);
-        var rssUrl = "https://sukebei.nyaa.si/?page=rss&c=0_0&f=0&q=" + q;
-        var htmlUrl = "https://sukebei.nyaa.si/?f=0&c=0_0&q=" + q;
-        log("magnet search", number, rssUrl);
-        var headers = {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "application/rss+xml, application/xml, text/xml, text/html, */*"
-        };
-        function doReq(url) {
-          var fm = sdk();
-          try {
-            if (fm && fm.req) {
-              return fm.req(url, { headers: headers, timeout: 12000 }).then(function (resp) {
-                if (!resp) return "";
-                return String(resp.body || resp.content || resp.data || "");
-              });
-            }
-          } catch (e) {}
-          return fetch(url, { headers: headers }).then(function (r) { return r.text(); }).catch(function () { return ""; });
-        }
-        return doReq(rssUrl).then(function (xml) {
-          var items = parseSukebeiRss(xml, number);
-          if (items.length) return items;
-          return doReq(htmlUrl).then(function (html) {
-            return parseSukebeiHtml(html, number);
-          });
-        }).catch(function (e) {
-          log("magnet search error", e && e.message || e);
-          return [];
-        });
-      }
-
-function fetchDetail(vid, fallbackTitle, fallbackCover) {
+            function fetchDetail(vid, fallbackTitle, fallbackCover) {
         var result = {
           vid: String(vid || ""),
           title: cleanText(fallbackTitle || vid || ""),
@@ -1510,7 +1774,7 @@ function fetchDetail(vid, fallbackTitle, fallbackCover) {
           score: "",
           date: "",
           magnets: [],
-          number: extractNumber(fallbackTitle || "") || extractNumber(vid || "")
+          number: extractNumber(fallbackTitle || "")
         };
         var official = apiRequest("/api/v1/movies/" + encodeURIComponent(vid) + "/magnets", {}).then(function (magData) {
           var list = sortMagnets((magData && magData.magnets) || []);
@@ -1538,7 +1802,6 @@ function fetchDetail(vid, fallbackTitle, fallbackCover) {
           log("official magnets error", err && err.message || err);
           return [];
         });
-
         return official.then(function (mags) {
           if (mags && mags.length) {
             result.magnets = mags;
@@ -1546,16 +1809,12 @@ function fetchDetail(vid, fallbackTitle, fallbackCover) {
           }
           var num = result.number || extractNumber(result.title) || "";
           result.number = num;
-          if (!num) {
-            log("no number for magnet fallback", result.title);
-            return result;
-          }
+          if (!num) return result;
           return Promise.race([
             fetchMagnetsByNumber(num),
             new Promise(function (resolve) { setTimeout(function () { resolve([]); }, 12000); })
           ]).then(function (alt) {
             result.magnets = alt || [];
-            log("fallback magnets", result.magnets.length);
             return result;
           }).catch(function () { return result; });
         }).catch(function () { return result; });
@@ -1734,15 +1993,6 @@ function fetchDetail(vid, fallbackTitle, fallbackCover) {
         container.appendChild(hero);
         var magnetList = document.createElement("div");
         magnetList.className = "magnet-list";
-        var head = document.createElement("div");
-        head.className = "section-head";
-        var ht = document.createElement("h3");
-        ht.textContent = "磁力链接";
-        head.appendChild(ht);
-        var hs = document.createElement("span");
-        hs.textContent = (data.magnets && data.magnets.length ? data.magnets.length + " 条" : "0") + (data.number ? " · " + data.number : "");
-        head.appendChild(hs);
-        magnetList.appendChild(head);
         if (data.magnets && data.magnets.length > 0) {
           for (var i = 0; i < data.magnets.length; i++) {
             var mag = data.magnets[i];
@@ -1759,13 +2009,13 @@ function fetchDetail(vid, fallbackTitle, fallbackCover) {
             var metaParts = [];
             if (mag.size) metaParts.push(mag.size);
             if (mag.date) metaParts.push(mag.date);
-            if (mag.source) metaParts.push(mag.source);
             magMeta.textContent = metaParts.join(" · ");
             magInfo.appendChild(magMeta);
             item.appendChild(magInfo);
             var playBtn = document.createElement("button");
             playBtn.className = "magnet-play";
-            playBtn.textContent = "播放";
+            playBtn.textContent = "App播放";
+            playBtn.setAttribute("data-magnet-url", mag.url);
             playBtn.tabIndex = 0;
             playBtn.addEventListener("click", function (url, title) {
               return function (e) {
@@ -1784,9 +2034,9 @@ function fetchDetail(vid, fallbackTitle, fallbackCover) {
           } else if (data.magnetsError) {
             noMag.textContent = "磁链加载失败: " + data.magnetsError;
           } else if (data.number) {
-            noMag.textContent = "未找到磁链（番号 " + data.number + "）";
+            noMag.textContent = "未找到磁链（" + data.number + "）";
           } else {
-            noMag.textContent = "暂无磁链（无法识别番号）";
+            noMag.textContent = "暂无磁链";
           }
           magnetList.appendChild(noMag);
         }
