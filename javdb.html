@@ -1202,70 +1202,152 @@
       function fetchMagnetsByNumber(number) {
         number = String(number || "").trim();
         if (!number) return Promise.resolve([]);
-        var headers = {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "application/json, application/rss+xml, text/xml, text/html, */*"
-        };
+
+        function pickBody(resp) {
+          if (resp == null) return "";
+          if (typeof resp === "string") return resp;
+          if (typeof resp === "object") {
+            if (typeof resp.body === "string") return resp.body;
+            if (typeof resp.content === "string") return resp.content;
+            if (typeof resp.data === "string") return resp.data;
+            if (resp.body != null && typeof resp.body === "object") {
+              try { return JSON.stringify(resp.body); } catch (e) {}
+            }
+            if (resp.data != null && typeof resp.data === "object") {
+              try { return JSON.stringify(resp.data); } catch (e) {}
+            }
+            // 有的实现直接返回 JSON 对象
+            if (resp.results || resp.success != null) {
+              try { return JSON.stringify(resp); } catch (e) {}
+            }
+            if (resp.ok && resp.body != null) return String(resp.body);
+          }
+          return String(resp || "");
+        }
+
         function doReq(url) {
+          var headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, application/rss+xml, text/xml, text/html, */*"
+          };
           var fm = sdk();
           try {
             if (fm && fm.req) {
-              return fm.req(url, { headers: headers, timeout: 12000 }).then(function (resp) {
-                return String((resp && (resp.body || resp.content || resp.data)) || "");
-              }).catch(function () { return ""; });
+              return fm.req(url, { headers: headers, timeout: 15000 }).then(function (resp) {
+                var body = pickBody(resp);
+                log("req ok", url.slice(0, 60), "bodyLen", String(body).length);
+                return body;
+              }).catch(function (e) {
+                log("req fail", url.slice(0, 60), e && e.message || e);
+                return "";
+              });
             }
-          } catch (e) {}
-          return fetch(url, { headers: headers }).then(function (r) { return r.text(); }).catch(function () { return ""; });
+          } catch (e) {
+            log("req exception", e && e.message || e);
+          }
+          return fetch(url, { headers: headers }).then(function (r) {
+            return r.text();
+          }).catch(function (e) {
+            log("fetch fail", e && e.message || e);
+            return "";
+          });
         }
-        function fromSolid(jsonText) {
+
+        function pushHash(items, seen, hash, title, size, source) {
+          hash = String(hash || "").trim().toLowerCase();
+          if (!hash || hash.length < 32 || seen[hash]) return;
+          seen[hash] = 1;
+          title = cleanText(title || number);
+          var tags = [];
+          if (/中字|字幕|-c\b|chinese/i.test(title)) tags.push("中字");
+          if (/\b(4k|2160p|1080p|720p)\b/i.test(title)) tags.push("HD");
+          var label = title || (number + " " + hash.slice(0, 8));
+          if (tags.length) label = label + " [" + tags.join("/") + "]";
+          if (tags.indexOf("中字") >= 0) label = "★ " + label;
+          items.push({
+            name: label,
+            url: magnetUrl(hash, title || number),
+            size: cleanText(size || ""),
+            date: "",
+            source: source || ""
+          });
+        }
+
+        function fromSolid(text) {
           var items = [];
           var seen = {};
+          text = String(text || "").trim();
+          if (!text) return items;
           try {
-            var j = JSON.parse(jsonText);
+            var j = JSON.parse(text);
+            // 有时包在 data 里
+            if (j && j.data && j.data.results) j = j.data;
             var list = (j && j.results) || (j && j.data) || [];
             if (!Array.isArray(list)) list = [];
             for (var i = 0; i < list.length; i++) {
               var it = list[i] || {};
-              var hash = String(it.infohash || it.infoHash || it.hash || "").trim();
-              if (!hash || hash.length < 32 || seen[hash.toLowerCase()]) continue;
-              seen[hash.toLowerCase()] = 1;
-              var title = cleanText(it.title || it.name || number);
+              var hash = it.infohash || it.infoHash || it.hash || "";
               var size = "";
               if (it.size) {
                 var n = Number(it.size);
-                if (n > 1024 * 1024) size = (n / (1024 * 1024 * 1024)).toFixed(2).replace(/\.00$/, "") + " GiB";
+                if (isFinite(n) && n > 1024 * 1024) size = (n / (1024 * 1024 * 1024)).toFixed(2) + " GiB";
                 else size = String(it.size);
               }
-              var tags = [];
-              if (/中字|字幕|-c\b|chinese/i.test(title)) tags.push("中字");
-              if (/\b(4k|2160p|1080p|720p)\b/i.test(title)) tags.push("HD");
-              var label = title;
-              if (tags.length) label = label + " [" + tags.join("/") + "]";
-              if (tags.indexOf("中字") >= 0) label = "★ " + label;
-              var seeds = it.seeders != null ? (" · 种子" + it.seeders) : "";
-              items.push({ name: label, url: magnetUrl(hash, title), size: size + seeds, date: "", source: "solid" });
+              if (it.seeders != null) size = (size ? size + " · " : "") + "S:" + it.seeders;
+              pushHash(items, seen, hash, it.title || it.name, size, "solid");
               if (items.length >= 20) break;
             }
           } catch (e) {
-            log("solid parse error", e && e.message || e);
+            log("solid parse", e && e.message || e, text.slice(0, 80));
           }
           return items;
         }
-        var solidUrl = "https://solidtorrents.to/api/v1/search?q=" + encodeURIComponent(number) + "&category=all&sort=seeders";
-        var rssUrl = "https://sukebei.nyaa.si/?page=rss&c=0_0&f=0&q=" + encodeURIComponent(number);
-        log("magnet search", number);
-        return doReq(solidUrl).then(function (body) {
-          var items = fromSolid(body);
-          if (items.length) return items;
-          return doReq(rssUrl).then(function (xml) {
-            return parseSukebeiRss(xml, number);
+
+        function fromRss(xml) {
+          var items = parseSukebeiRss(xml, number) || [];
+          return items;
+        }
+
+        function fromHtml(html) {
+          var items = [];
+          var seen = {};
+          var re = /magnet:\?xt=urn:btih:([a-fA-F0-9]{40})/ig;
+          var m;
+          while ((m = re.exec(String(html || ""))) !== null) {
+            pushHash(items, seen, m[1], number, "", "html");
+            if (items.length >= 15) break;
+          }
+          return items;
+        }
+
+        var q = encodeURIComponent(number);
+        var urls = [
+          { type: "solid", url: "https://solidtorrents.to/api/v1/search?q=" + q + "&category=all&sort=seeders" },
+          { type: "rss", url: "https://sukebei.nyaa.si/?page=rss&c=0_0&f=0&q=" + q },
+          { type: "html", url: "https://sukebei.nyaa.si/?f=0&c=0_0&q=" + q }
+        ];
+
+        log("magnet search start", number);
+        // 串行尝试，避免并发被拦；每个源限时
+        function tryAt(i) {
+          if (i >= urls.length) return Promise.resolve([]);
+          var src = urls[i];
+          return Promise.race([
+            doReq(src.url),
+            new Promise(function (resolve) { setTimeout(function () { resolve(""); }, 10000); })
+          ]).then(function (body) {
+            var items = [];
+            if (src.type === "solid") items = fromSolid(body);
+            else if (src.type === "rss") items = fromRss(body);
+            else items = fromHtml(body);
+            log("magnet source", src.type, "got", items.length);
+            if (items.length) return items;
+            return tryAt(i + 1);
+          }).catch(function () {
+            return tryAt(i + 1);
           });
-        }).catch(function (e) {
-          log("magnet search error", e && e.message || e);
-          return doReq(rssUrl).then(function (xml) {
-            return parseSukebeiRss(xml, number);
-          }).catch(function () { return []; });
-        });
+        }
+        return tryAt(0);
       }
 
       var TRACKERS = [
@@ -1851,7 +1933,7 @@
           if (!num) return result;
           return Promise.race([
             fetchMagnetsByNumber(num),
-            new Promise(function (resolve) { setTimeout(function () { resolve([]); }, 12000); })
+            new Promise(function (resolve) { setTimeout(function () { resolve([]); }, 35000); })
           ]).then(function (alt) {
             result.magnets = alt || [];
             return result;
@@ -2082,11 +2164,55 @@
           } else if (data.magnetsError) {
             noMag.textContent = "磁链加载失败: " + data.magnetsError;
           } else if (data.number) {
-            noMag.textContent = "未找到磁链（" + data.number + "）";
+            noMag.textContent = "自动搜索无结果（" + data.number + "）";
           } else {
             noMag.textContent = "暂无磁链（标题中未识别到番号）";
           }
           magnetList.appendChild(noMag);
+          if (!data.magnetsLoading && data.number) {
+            var actions = document.createElement("div");
+            actions.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;justify-content:center;";
+            var num = data.number;
+            function addAction(label, url) {
+              var a = document.createElement("button");
+              a.className = "btn small";
+              a.textContent = label;
+              a.addEventListener("click", function () {
+                var fm = sdk();
+                if (fm && fm.util && fm.util.open) {
+                  try { fm.util.open(url); return; } catch (e) {}
+                }
+                try { window.open(url, "_blank"); } catch (e2) {
+                  toast(url);
+                }
+              });
+              actions.appendChild(a);
+            }
+            addAction("Sukebei搜索", "https://sukebei.nyaa.si/?f=0&c=0_0&q=" + encodeURIComponent(num));
+            addAction("Solid搜索", "https://solidtorrents.to/search?q=" + encodeURIComponent(num));
+            var copyBtn = document.createElement("button");
+            copyBtn.className = "btn small primary";
+            copyBtn.textContent = "复制番号";
+            copyBtn.addEventListener("click", function () {
+              try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                  navigator.clipboard.writeText(num);
+                } else {
+                  var t = document.createElement("textarea");
+                  t.value = num;
+                  document.body.appendChild(t);
+                  t.select();
+                  document.execCommand("copy");
+                  document.body.removeChild(t);
+                }
+                toast("已复制 " + num);
+              } catch (e) {
+                toast(num);
+              }
+            });
+            actions.appendChild(copyBtn);
+            magnetList.appendChild(actions);
+          }
         }
         container.appendChild(magnetList);
       }
