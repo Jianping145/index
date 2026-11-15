@@ -915,9 +915,9 @@
     <div class="cookie-modal">
       <h3>🔑 设置登录 Cookie</h3>
       <p style="color:var(--muted);font-size:12px;margin:0 0 8px;">
-        当前版本已优先使用官方 App API（一般无需 Cookie）。若个别功能仍异常，可粘贴网页 Cookie 作为备用。
+        若详情页提示“Cloudflare 拦截”或没有任何数据，说明触发了防爬盾。请在浏览器登录 JavDB 后，复制整个 Cookie 粘贴到下方。
       </p>
-      <textarea id="cookieInput" placeholder="粘贴 Cookie 字符串…"></textarea>
+      <textarea id="cookieInput" placeholder="粘贴包含 cf_clearance 和 over18 的完整 Cookie 字符串…"></textarea>
       <div class="btn-row">
         <button class="btn-close" id="cookieClose">取消</button>
         <button class="btn-clear" id="cookieClear">清除</button>
@@ -935,17 +935,12 @@
       var SITE_BASE = "https://javdb580.com";
       var API_HOST = "https://jdforrepam.com";
       var CONFIG = {
-        cachePrefix: "javdb_hm_",
-        cacheTtl: 1800000,
         pageSize: 24,
         apiMiddle: "lpw6vgqzsp",
         apiSuffix: "71cf27bb3c0bcdf207b64abecddc970098c7421ee7203b9cdae54478478a199e7d5a6e1a57691123c1a931c057842fb73ba3b3c83bcd69c17ccf174081e3d8aa",
         apiUA: "Dart/3.5 (dart:io)"
       };
       var state = {
-        sdkReady: false,
-        isApp: false,
-        isTV: false,
         currentCategory: "hot",
         currentFilter: "",
         currentPage: 1,
@@ -959,12 +954,6 @@
         actorPage: 1
       };
 
-      var ACTOR_SUB_MAP = {
-        "recommend": "/actors",
-        "censored": "/actors/censored",
-        "uncensored": "/actors/uncensored",
-        "western": "/actors/western"
-      };
       var ACTOR_SUB_LABELS = [
         { id: "recommend", label: "推荐" },
         { id: "censored", label: "有码" },
@@ -1149,86 +1138,30 @@
         return url;
       }
 
-      var TRACKERS = [
-        "udp://tracker.opentrackr.org:1337/announce",
-        "udp://open.tracker.cl:1337/announce",
-        "udp://tracker.openbittorrent.com:6969/announce",
-        "udp://open.stealth.si:80/announce",
-        "udp://tracker.torrent.eu.org:451/announce",
-        "udp://exodus.desync.com:6969/announce",
-        "udp://tracker.moeking.me:6969/announce",
-        "udp://explodie.org:6969/announce",
-        "udp://tracker1.bt.moack.co.kr:80/announce",
-        "udp://tracker.tiny-vps.com:6969/announce",
-        "http://tracker.openbittorrent.com:80/announce",
-        "http://tracker.opentrackr.org:1337/announce"
-      ];
-
-      function magnetUrl(hash, name) {
-        hash = String(hash || "").trim().replace(/^magnet:\?xt=urn:btih:/i, "");
-        if (!hash) return "";
-        var url = "magnet:?xt=urn:btih:" + hash;
-        if (name) url += "&dn=" + encodeURIComponent(String(name));
-        for (var i = 0; i < TRACKERS.length; i++) {
-          url += "&tr=" + encodeURIComponent(TRACKERS[i]);
-        }
-        return url;
-      }
-
-      function sortMagnets(list) {
-        return (list || []).slice().sort(function (a, b) {
-          a = a || {}; b = b || {};
-          function score(m) {
-            var s = 0;
-            var fc = Number(m.files_count || 0);
-            var name = String(m.name || "").toLowerCase();
-            if (fc === 1) s += 100;
-            else if (fc > 0 && fc <= 3) s += 40;
-            if (/\.mp4|\.mkv|\.avi/.test(name)) s += 30;
-            if (m.cnsub || m.has_cnsub || m.is_subtitle) s += 20;
-            if (m.hd) s += 10;
-            var sz = Number(m.size || 0);
-            if (sz > 0 && sz < 2048) s += 5;
-            return s;
-          }
-          return score(b) - score(a);
-        });
-      }
-
-      function formatSize(v) {
-        if (v === undefined || v === null || v === "") return "";
-        if (typeof v === "string" && /[KMGTkmgt]/.test(v)) return v;
-        var n = Number(v);
-        if (!isFinite(n) || n <= 0) return String(v);
-        if (n < 1024 * 1024) {
-          if (n >= 1024) return (n / 1024).toFixed(1).replace(/\.0$/, "") + " GB";
-          return n + " MB";
-        }
-        var u = ["B", "KB", "MB", "GB", "TB"];
-        var i = 0;
-        while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-        return (i === 0 ? n : n.toFixed(1).replace(/\.0$/, "")) + " " + u[i];
-      }
-
       function mapApiMovie(x) {
         x = x || {};
         var id = String(x.id || "");
         var number = cleanText(x.number || "");
         var title = cleanText(x.title || x.origin_title || number || id);
+        
+        if (!number) {
+          var m = title.match(/([A-Za-z0-9]+-\d+)/);
+          if (m) number = m[1];
+        }
+        
         var cover = normalizeCover(x.cover_url || x.thumb_url || "", id);
         var score = x.score || x.rate || "";
         if (score) score = String(score);
         return {
           vid: id,
+          number: number,
           title: number ? (number + " " + title) : title,
           cover: cover,
           score: score,
           date: cleanText(x.release_date || ""),
           hasMagnet: !!(x.magnets_count && Number(x.magnets_count) > 0),
           hasSubtitle: !!(x.has_cnsub),
-          number: number,
-          magnetsCount: x.magnets_count || 0,
-          canPlay: !!x.can_play
+          magnetsCount: x.magnets_count || 0
         };
       }
 
@@ -1256,20 +1189,6 @@
         { id: "download", label: "含磁链" },
         { id: "subtitle", label: "含字幕" }
       ];
-      var CATEGORY_URL_MAP = {
-        "hot": "/",
-        "censored": "/censored",
-        "uncensored": "/uncensored",
-        "western": "/western",
-        "fc2": "/fc2",
-        "anime": "/anime",
-        "actors": "/actors"
-      };
-      var FILTER_PARAM_MAP = {
-        "playable": "f=playable",
-        "download": "f=download",
-        "subtitle": "f=subtitle"
-      };
 
       function log() {
         if (window.fm && fm.log) {
@@ -1328,90 +1247,7 @@
         }
       }
 
-      function parseVideoCards(doc) {
-        if (!doc) return [];
-        var items = [];
-        var gridItems = doc.querySelectorAll(".grid-item, .movie-list .item, .videos .item");
-        if (gridItems.length === 0) {
-          gridItems = doc.querySelectorAll("a[href*='/v/']");
-        }
-        var seen = {};
-        for (var i = 0; i < gridItems.length; i++) {
-          var el = gridItems[i];
-          var linkEl = el.tagName === "A" ? el : el.querySelector("a[href*='/v/']");
-          if (!linkEl) continue;
-          var href = linkEl.getAttribute("href");
-          var vid = extractVidFromUrl(href);
-          if (!vid) continue;
-          if (seen[vid]) continue;
-          seen[vid] = true;
-          var imgEl = el.querySelector("img");
-          var coverUrl = imgEl ? absoluteUrl(imgEl.getAttribute("src") || imgEl.getAttribute("data-src") || "") : "";
-          var titleEl = el.querySelector(".video-title, .uid, .item-title, strong");
-          var title = cleanText(titleEl ? titleEl.textContent : vid);
-          var scoreEl = el.querySelector(".score, .meta .score, .value");
-          var score = "";
-          if (scoreEl) {
-            score = cleanText(scoreEl.textContent).replace(/分.*$/, "");
-          }
-          var dateEl = el.querySelector(".meta, .date, time");
-          var date = dateEl ? cleanText(dateEl.textContent) : "";
-          var hasMagnet = false;
-          var hasSubtitle = false;
-          var tags = el.querySelectorAll(".tag, .label");
-          for (var t = 0; t < tags.length; t++) {
-            var tagText = cleanText(tags[t].textContent);
-            if (tagText.indexOf("磁") !== -1) hasMagnet = true;
-            if (tagText.indexOf("字") !== -1) hasSubtitle = true;
-          }
-          var textAll = el.textContent || "";
-          if (textAll.indexOf("含磁") !== -1 || textAll.indexOf("磁鏈") !== -1) hasMagnet = true;
-          if (textAll.indexOf("字幕") !== -1 || textAll.indexOf("中字") !== -1) hasSubtitle = true;
-          items.push({
-            vid: vid,
-            title: title,
-            cover: coverUrl,
-            score: score,
-            date: date,
-            hasMagnet: hasMagnet,
-            hasSubtitle: hasSubtitle
-          });
-          if (items.length >= CONFIG.pageSize) break;
-        }
-        return items;
-      }
-
-      function parseActorList(html) {
-        var doc = parseHtml(html);
-        if (!doc) return [];
-        var actors = [];
-        var actorBoxes = doc.querySelectorAll(".actor-box");
-        if (actorBoxes.length === 0) {
-          actorBoxes = doc.querySelectorAll("a[href*='/actors/']");
-        }
-        var seen = {};
-        for (var i = 0; i < actorBoxes.length; i++) {
-          var box = actorBoxes[i];
-          var linkEl = box.tagName === "A" ? box : box.querySelector("a[href*='/actors/']");
-          if (!linkEl) continue;
-          var href = linkEl.getAttribute("href");
-          var actorId = href.replace("/actors/", "").replace(/\/$/, "").split("?")[0];
-          if (!actorId || actorId === "censored" || actorId === "uncensored" || actorId === "western" || actorId === "search") continue;
-          if (seen[actorId]) continue;
-          seen[actorId] = true;
-          var nameEl = linkEl.querySelector("strong") || linkEl;
-          var name = cleanText(nameEl.textContent);
-          if (!name) {
-            var titleAttr = linkEl.getAttribute("title");
-            name = titleAttr ? cleanText(titleAttr.split(",")[0]) : actorId;
-          }
-          var imgEl = linkEl.querySelector("img.avatar") || linkEl.querySelector("img");
-          var avatar = imgEl ? absoluteUrl(imgEl.getAttribute("src") || imgEl.getAttribute("data-src") || "") : "";
-          actors.push({ id: actorId, name: name, avatar: avatar });
-        }
-        return actors;
-      }
-
+      // ★ FIX: 彻底重构解析详情页函数
       function parseDetailPage(doc, html) {
         if (!doc) return null;
         var result = {
@@ -1424,58 +1260,82 @@
           ".img-thumbnail, img[src*='/covers/'], img[src*='/thumbs/']"
         );
         if (imgEl) result.cover = absoluteUrl(imgEl.getAttribute("src") || imgEl.getAttribute("data-src") || "");
+        
+        // 修复评分解析（截图显示 082 是抓错了，这里限制只抓标准的数字格式）
         var scoreEl = doc.querySelector(".score, .star-num, .panel-block .value");
-        if (scoreEl) result.score = cleanText(scoreEl.textContent).replace(/[^\d.]/g, "");
+        if (scoreEl) {
+          var st = cleanText(scoreEl.textContent);
+          var scoreMatch = st.match(/(\d+(\.\d+)?)/);
+          if (scoreMatch) result.score = scoreMatch[1];
+        }
+        
         var dateEl = doc.querySelector(".date, .panel-block.first-block time, .meta time");
         if (dateEl) result.date = cleanText(dateEl.textContent);
 
-        // ★ FIX: 直接正则暴力提取 Magnet 链接（参考嗅觉浏览器规则）
         var seen = {};
-        var magnetMatches = html.match(/magnet:\?xt=urn:btih:[^\"'\s<>]+/g) || [];
-        for (var i = 0; i < magnetMatches.length; i++) {
-          var url = magnetMatches[i].replace(/&amp;/g, '&').replace(/[\"'<>].*$/, '').trim();
-          if (seen[url]) continue;
-          seen[url] = true;
-          
-          // 尝试在附近寻找名称和大小
-          var idx = html.indexOf(url);
-          var snippet = html.substring(Math.max(0, idx - 500), Math.min(html.length, idx + 500));
-          var nameMatch = snippet.match(/<div[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/div>/i) || 
-                          snippet.match(/<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/i);
-          var name = nameMatch ? cleanText(nameMatch[1]) : ("磁力链接 " + (i + 1));
-          
-          var sizeMatch = snippet.match(/<span[^>]*class="[^"]*meta[^"]*"[^>]*>([^<]+)<\/span>/i);
-          var size = sizeMatch ? cleanText(sizeMatch[1]) : "";
-
-          result.magnets.push({ name: name, url: url, size: size, date: "" });
+        
+        // 1. 优先使用 DOM 精准解析（现代 JavDB 网页结构）
+        var items = doc.querySelectorAll("#magnets-content .item, .magnet-list .item, .magnet-item");
+        if (items.length === 0) {
+          items = doc.querySelectorAll(".panel-block"); 
         }
+        
+        for (var i = 0; i < items.length; i++) {
+            var box = items[i];
+            var link = box.querySelector("a[href^='magnet:']");
+            if (!link) continue;
+            var url = link.getAttribute("href").replace(/&amp;/g, '&').trim();
+            if (seen[url]) continue;
+            seen[url] = true;
+            
+            var nameEl = box.querySelector(".name, .magnet-name, .item-name");
+            var name = nameEl ? cleanText(nameEl.textContent) : "";
+            
+            var metaEl = box.querySelector(".meta, .magnet-meta, .size");
+            var size = metaEl ? cleanText(metaEl.textContent) : "";
+            
+            var dateEl2 = box.querySelector(".time, .date");
+            var date = dateEl2 ? cleanText(dateEl2.textContent) : "";
+            
+            result.magnets.push({
+                name: name || ("磁力链接 " + (result.magnets.length + 1)),
+                url: url,
+                size: size,
+                date: date
+            });
+        }
+        
+        // 2. 如果 DOM 没匹配到，退回正则暴力提取
+        if (result.magnets.length === 0) {
+            var magnetMatches = html.match(/magnet:\?xt=urn:btih:[^\"'\s<>]+/g) || [];
+            for (var j = 0; j < magnetMatches.length; j++) {
+                var url = magnetMatches[j].replace(/&amp;/g, '&').replace(/[\"'<>].*$/, '').trim();
+                if (seen[url]) continue;
+                seen[url] = true;
+                
+                var idx = html.indexOf(url);
+                var snippet = html.substring(Math.max(0, idx - 1000), Math.min(html.length, idx + 1000));
+                
+                var nameMatch = snippet.match(/<div[^>]*class="[^"]*name[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || 
+                                snippet.match(/<span[^>]*class="[^"]*name[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
+                var name = nameMatch ? cleanText(nameMatch[1].replace(/<[^>]+>/g, '')) : "";
+                
+                var sizeMatch = snippet.match(/<span[^>]*class="[^"]*meta[^"]*"[^>]*>([\s\S]*?)<\/span>/i) || 
+                                snippet.match(/<div[^>]*class="[^"]*meta[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+                var size = sizeMatch ? cleanText(sizeMatch[1].replace(/<[^>]+>/g, '')) : "";
+
+                result.magnets.push({
+                    name: name || ("磁力链接 " + (result.magnets.length + 1)),
+                    url: url,
+                    size: size,
+                    date: ""
+                });
+            }
+        }
+        
         return result;
       }
 
-      function buildCategoryUrl(catId, filterId, page, query) {
-        var path;
-        if (query) {
-          path = "/search";
-        } else if (catId && catId !== "hot") {
-          path = CATEGORY_URL_MAP[catId] || "/";
-        } else {
-          path = "/";
-        }
-        var params = [];
-        if (query) {
-          params.push("q=" + encodeURIComponent(query));
-        }
-        if (filterId && FILTER_PARAM_MAP[filterId]) {
-          params.push(FILTER_PARAM_MAP[filterId]);
-        }
-        if (page && page > 1) {
-          params.push("page=" + page);
-        }
-        if (params.length > 0) {
-          return SITE_BASE + path + (path.indexOf("?") >= 0 ? "&" : "?") + params.join("&");
-        }
-        return SITE_BASE + path;
-      }
       function buildDetailUrl(vid) {
         return SITE_BASE + "/v/" + encodeURIComponent(vid);
       }
@@ -1483,7 +1343,6 @@
       function isCloudflareChallenge(html) {
         if (!html || typeof html !== "string") return false;
         var lower = html.toLowerCase();
-        // ★ FIX: 只要拿到了 magnet 或 title，就不算被 CF 拦截
         if (lower.indexOf("magnet:") !== -1 || lower.indexOf("video-title") !== -1) return false;
         return lower.indexOf("just a moment") !== -1 ||
                lower.indexOf("cf-browser-verification") !== -1 ||
@@ -1498,13 +1357,11 @@
         if (!reqOpts.headers) reqOpts.headers = {};
         var fm = sdk();
 
-        // ★ FIX: 完全照搬嗅觉浏览器规则的伪装 Header 和 Cookie
         reqOpts.headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8";
         reqOpts.headers["Accept-Language"] = "zh-CN,zh;q=0.9,en;q=0.8";
         reqOpts.headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
         reqOpts.headers["Referer"] = SITE_BASE + "/";
         
-        // 强制注入 over18=1，否则无法查看成人内容
         if (manualCookie) {
           reqOpts.headers["Cookie"] = manualCookie + "; over18=1; locale=zh;";
         } else {
@@ -1663,40 +1520,55 @@
         });
       }
 
-      function fetchDetail(vid, fallbackTitle, fallbackCover) {
+      function fetchDetail(vid, number, title, fallbackCover) {
         var result = {
-          vid: String(vid || ""),
-          title: cleanText(fallbackTitle || vid || ""),
-          cover: normalizeCover(fallbackCover || "", vid),
+          vid: String(vid),
+          title: cleanText(title || number || vid),
+          cover: normalizeCover(fallbackCover || ""),
           score: "", date: "", magnets: []
         };
-        return fetchDetailFromWeb(vid, result);
+        
+        var keyword = number ? number : title;
+        if (!keyword) {
+            return fetchDetailByUrl(buildDetailUrl(vid), result);
+        }
+
+        var searchUrl = SITE_BASE + "/search?q=" + encodeURIComponent(keyword) + "&f=all";
+        return fetchWithCache(searchUrl).then(function(html) {
+            if (isCloudflareChallenge(html)) throw new Error("CLOUDFLARE_CHALLENGE");
+            var doc = parseHtml(html);
+            if (!doc) throw new Error("搜索页解析失败");
+            
+            var linkEl = doc.querySelector("a[href*='/v/']");
+            if (!linkEl) {
+                return fetchDetailByUrl(buildDetailUrl(vid), result);
+            }
+            
+            var href = linkEl.getAttribute("href");
+            var realUrl = absoluteUrl(href);
+            return fetchDetailByUrl(realUrl, result);
+        }).catch(function(err) {
+            log("searchAndFetch error:", err);
+            return fetchDetailByUrl(buildDetailUrl(vid), result);
+        });
       }
 
-      function fetchDetailFromWeb(vid, fallbackResult) {
-        var url = buildDetailUrl(vid);
-        var reqOpts = { headers: { Referer: SITE_BASE + "/" } };
-        return fetchWithCache(url, reqOpts).then(function (html) {
-          if (isCloudflareChallenge(html)) {
-            throw new Error("CLOUDFLARE_CHALLENGE");
-          }
-          var doc = parseHtml(html);
-          if (!doc) return fallbackResult;
-          var parsed = parseDetailPage(doc, html);
-          if (!parsed) return fallbackResult;
-          if (parsed.title) fallbackResult.title = parsed.title;
-          if (parsed.cover) fallbackResult.cover = parsed.cover;
-          if (parsed.score) fallbackResult.score = parsed.score;
-          if (parsed.date) fallbackResult.date = parsed.date;
-          if (parsed.magnets && parsed.magnets.length > 0) {
-            fallbackResult.magnets = parsed.magnets;
-          } else {
-            throw new Error("HTML内未发现磁链数据");
-          }
-          return fallbackResult;
-        }).catch(function (err) {
-          log("[detail] web fallback error:", err && err.message || err);
-          throw err;
+      function fetchDetailByUrl(url, result) {
+        return fetchWithCache(url).then(function(html) {
+            if (isCloudflareChallenge(html)) throw new Error("CLOUDFLARE_CHALLENGE");
+            var doc = parseHtml(html);
+            var parsed = parseDetailPage(doc, html);
+            if (parsed) {
+                if (parsed.title) result.title = parsed.title;
+                if (parsed.cover) result.cover = parsed.cover;
+                if (parsed.score) result.score = parsed.score;
+                if (parsed.date) result.date = parsed.date;
+                if (parsed.magnets) result.magnets = parsed.magnets;
+            }
+            if (result.magnets.length === 0) {
+                result.noMagnet = true;
+            }
+            return result;
         });
       }
 
@@ -1758,12 +1630,12 @@
         card.appendChild(body);
         card.addEventListener("click", function (e) {
           e.preventDefault();
-          openDetail(item.vid, item.title, item.cover);
+          openDetail(item.vid, item.number, item.title, item.cover);
         });
         card.addEventListener("keydown", function (e) {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            openDetail(item.vid, item.title, item.cover);
+            openDetail(item.vid, item.number, item.title, item.cover);
           }
         });
         return card;
@@ -1920,6 +1792,8 @@
                  openCookieModal();
              });
              noMag.appendChild(btn);
+          } else if (data.noMagnet) {
+             noMag.textContent = "该视频暂无磁力链接";
           } else {
              noMag.textContent = data.errorMsg || "暂无磁链（可能需登录或 Cookie 失效）";
           }
@@ -1944,7 +1818,7 @@
         }
       }
 
-      function openDetail(vid, title, fallbackCover) {
+      function openDetail(vid, number, title, fallbackCover) {
         state.detailVid = vid;
         state.routeToken++;
         var token = state.routeToken;
@@ -1964,7 +1838,7 @@
         };
         renderDetail(initialData, vid, fallbackCover);
         
-        fetchDetail(vid, title, fallbackCover).then(function (data) {
+        fetchDetail(vid, number, title, fallbackCover).then(function (data) {
           if (token !== state.routeToken) return;
           renderDetail(data, vid, fallbackCover);
         }).catch(function (err) {
@@ -2391,12 +2265,8 @@
         });
 
         window.addEventListener("popstate", function (e) {
-          if (e.state && e.state.type === "detail") {
-            if (!state.detailVid) return;
-          } else {
-            if (document.body.classList.contains("detail-active")) {
-              closeDetail();
-            }
+          if (document.body.classList.contains("detail-active")) {
+            closeDetail();
           }
         });
 
@@ -2464,13 +2334,10 @@
       function init() {
         detectTV();
         if (window.fongmiBridge) {
-          state.isApp = true;
           document.documentElement.classList.add("fm-native");
           document.documentElement.classList.add("native-phone-app");
         }
         waitForSdk(2000).then(function (ready) {
-          state.sdkReady = ready;
-          log("SDK ready:", ready);
           if (ready && sdk() && sdk().ui && sdk().ui.setChrome) {
             try {
               sdk().ui.setChrome({
@@ -2479,14 +2346,12 @@
                 navigationBarStyle: "light",
                 startup: true
               });
-            } catch (e) {
-              log("setChrome error:", e);
-            }
+            } catch (e) {}
           }
           if (location.hash && location.hash.indexOf("detail=") === 1) {
             var vidFromHash = location.hash.split("detail=")[1].split("&")[0];
             if (vidFromHash) {
-              openDetail(decodeURIComponent(vidFromHash), "");
+              openDetail(decodeURIComponent(vidFromHash), "", "");
               return;
             }
           }
