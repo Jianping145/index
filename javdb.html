@@ -1161,18 +1161,36 @@
         text = String(text || "").trim();
         if (!text) return "";
         var upper = text.toUpperCase();
-        // 有码常见: ABC-123 / ABC123
-        var m = upper.match(/\b(FC2[-_]?PPV[-_]?\d{5,8})\b/) ||
-                upper.match(/\b(FC2[-_]?\d{5,8})\b/) ||
-                upper.match(/\b([A-Z]{2,15}-\d{2,5}[A-Z]?)\b/) ||
-                upper.match(/\b([A-Z]{2,15}\d{3,5})\b/);
+        // FC2 优先：FC2-PPV-1234567 / FC2PPV1234567 / FC2 1234567 / FC2-1234567
+        var m = upper.match(/\b(FC2[-_\s]?PPV[-_\s]?\d{5,8})\b/) ||
+                upper.match(/\b(FC2[-_\s]?\d{5,8})\b/) ||
+                upper.match(/\b(FC2PPV\d{5,8})\b/);
         if (m) {
-          var n = m[1].replace(/_/g, "-").replace(/PPV-/i, "");
-          n = n.replace(/^FC2(\d)/, "FC2-$1");
-          if (/^[A-Z]+\d+$/.test(n) && n.indexOf("-") < 0) {
-            n = n.replace(/([A-Z]+)(\d+)/, "$1-$2");
-          }
+          var n = m[1].replace(/[\s_]+/g, "-").replace(/PPV-/i, "PPV-");
+          // 统一成 FC2-数字
+          var digits = (n.match(/(\d{5,8})/) || [])[1];
+          if (digits) return "FC2-" + digits;
           return n;
+        }
+        // 动漫常见中间带字母: KNB-M014 / KNBM-014
+        m = upper.match(/\b([A-Z]{2,10}[-_]?[A-Z]\d{2,6})\b/);
+        if (m) {
+          var n3 = m[1].replace(/_/g, "-");
+          // 统一成 PREFIX-LETTER+DIGITS 或 PREFIXLETTER-DIGITS
+          if (/^[A-Z]+[A-Z]\d+$/.test(n3.replace(/-/g, ""))) {
+            return n3;
+          }
+          return n3;
+        }
+        // 有码/动漫常见: ABC-123 / ACRN-422 / JDXA-57749 / ABC123
+        m = upper.match(/\b([A-Z]{2,15}-\d{2,8}[A-Z]?)\b/) ||
+            upper.match(/\b([A-Z]{2,15}\d{3,8})\b/);
+        if (m) {
+          var n2 = m[1].replace(/_/g, "-");
+          if (/^[A-Z]+\d+$/.test(n2) && n2.indexOf("-") < 0) {
+            n2 = n2.replace(/([A-Z]+)(\d+)/, "$1-$2");
+          }
+          return n2;
         }
         // 无码数字番号: 111426-001 / 010125_001 / 041525-001
         m = upper.match(/\b(\d{6}[-_]\d{2,3})\b/) || upper.match(/\b(\d{6}-\d{3})\b/);
@@ -1182,7 +1200,6 @@
         if (m) return m[1];
         m = text.match(/\b(\d{4}\.\d{2}\.\d{2})\b/);
         if (m) {
-          // 取日期前的工作室名
           var idx = text.indexOf(m[1]);
           var prefix = text.slice(Math.max(0, idx - 40), idx).trim();
           var studio = (prefix.match(/([A-Za-z][A-Za-z0-9]+)[\s.]*$/) || [])[1];
@@ -1223,9 +1240,95 @@
         return items;
       }
 
-      function fetchMagnetsByNumber(number) {
+      function fetchMagnetsByNumber(number, titleHint) {
         number = String(number || "").trim();
-        if (!number) return Promise.resolve([]);
+        titleHint = String(titleHint || "").trim();
+        if (!number && !titleHint) return Promise.resolve([]);
+
+        // 从日文标题提取搜索关键词（动漫种子常用原名而非番号）
+        function titleKeywords(title) {
+          title = String(title || "");
+          // 去掉番号本身
+          if (number) {
+            try {
+              title = title.replace(new RegExp(number.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig"), " ");
+            } catch (e) {}
+          }
+          // 去掉常见无用词
+          title = title
+            .replace(/第\s*\d+\s*[話话巻卷]/g, " ")
+            .replace(/THE\s*ANIMATION/ig, " ")
+            .replace(/[【\[\(（].*?[】\]\)）]/g, " ")
+            .replace(/[!！?？~～\.。,，、:：;；""''「」『』]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (!title) return [];
+          var keys = [];
+          // 整段日文标题（截断过长）
+          if (title.length >= 4) {
+            keys.push(title.length > 40 ? title.slice(0, 40) : title);
+          }
+          // 取前半段更短关键词
+          var parts = title.split(/\s+/).filter(function (p) { return p.length >= 2; });
+          if (parts.length >= 2) {
+            var short = parts.slice(0, 3).join(" ");
+            if (short && short !== keys[0]) keys.push(short);
+          }
+          // 纯假名/汉字连续片段
+          var jp = title.match(/[\u3040-\u30ff\u4e00-\u9fff]{3,20}/g);
+          if (jp) {
+            for (var i = 0; i < jp.length && keys.length < 4; i++) {
+              if (keys.indexOf(jp[i]) < 0) keys.push(jp[i]);
+            }
+          }
+          return keys.slice(0, 3);
+        }
+
+        // 精简变体：只保留最有效的几个，避免搜索过慢
+        function buildQueryVariants(num) {
+          var variants = [];
+          var seenQ = {};
+          function add(q) {
+            q = String(q || "").trim();
+            if (!q || seenQ[q]) return;
+            seenQ[q] = 1;
+            variants.push(q);
+          }
+          var upper = num.toUpperCase();
+          var fc2m = upper.match(/^FC2[-_]?PPV[-_]?(\d{5,8})$/i) || upper.match(/^FC2[-_]?(\d{5,8})$/i);
+          if (fc2m) {
+            var digits = fc2m[1];
+            add("FC2-PPV-" + digits);
+            add("FC2-" + digits);
+            add(digits);
+          } else {
+            add(num);
+            // 普通: SSIS-001 / SSIS001
+            var m2 = upper.match(/^([A-Z]{2,15})[-_]?(\d{2,8}[A-Z]?)$/);
+            if (m2) {
+              add(m2[1] + "-" + m2[2]);
+              add(m2[1] + m2[2]);
+            }
+            // 动漫常见: KNB-M014 → KNBM-014 / KNBM014 / 62knbm014
+            var m3 = upper.match(/^([A-Z]{2,10})[-_]?([A-Z])(\d{2,6})$/);
+            if (m3) {
+              add(m3[1] + m3[2] + "-" + m3[3]);   // KNBM-014
+              add(m3[1] + m3[2] + m3[3]);         // KNBM014
+              add(m3[1] + "-" + m3[2] + m3[3]);   // KNB-M014
+              add("62" + (m3[1] + m3[2]).toLowerCase() + m3[3]); // 62knbm014
+            }
+          }
+          return variants.slice(0, 4);
+        }
+
+        var queryVariants = number ? buildQueryVariants(number) : [];
+        // 追加日文标题关键词（动漫资源常用原名）
+        var tKeys = titleKeywords(titleHint || "");
+        for (var ti = 0; ti < tKeys.length; ti++) {
+          if (queryVariants.indexOf(tKeys[ti]) < 0) queryVariants.push(tKeys[ti]);
+        }
+        if (!queryVariants.length && number) queryVariants = [number];
+        queryVariants = queryVariants.slice(0, 5);
 
         function pickBody(resp) {
           if (resp == null) return "";
@@ -1240,7 +1343,6 @@
             if (resp.data != null && typeof resp.data === "object") {
               try { return JSON.stringify(resp.data); } catch (e) {}
             }
-            // 有的实现直接返回 JSON 对象
             if (resp.results || resp.success != null) {
               try { return JSON.stringify(resp); } catch (e) {}
             }
@@ -1249,32 +1351,30 @@
           return String(resp || "");
         }
 
-        function doReq(url) {
+        function doReq(url, timeoutMs) {
+          timeoutMs = timeoutMs || 8000;
           var headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json, application/rss+xml, text/xml, text/html, */*"
           };
           var fm = sdk();
+          var p;
           try {
             if (fm && fm.req) {
-              return fm.req(url, { headers: headers, timeout: 15000 }).then(function (resp) {
-                var body = pickBody(resp);
-                log("req ok", url.slice(0, 60), "bodyLen", String(body).length);
-                return body;
-              }).catch(function (e) {
-                log("req fail", url.slice(0, 60), e && e.message || e);
-                return "";
-              });
+              p = fm.req(url, { headers: headers, timeout: timeoutMs }).then(function (resp) {
+                return pickBody(resp);
+              }).catch(function () { return ""; });
             }
-          } catch (e) {
-            log("req exception", e && e.message || e);
+          } catch (e) {}
+          if (!p) {
+            p = fetch(url, { headers: headers }).then(function (r) {
+              return r.text();
+            }).catch(function () { return ""; });
           }
-          return fetch(url, { headers: headers }).then(function (r) {
-            return r.text();
-          }).catch(function (e) {
-            log("fetch fail", e && e.message || e);
-            return "";
-          });
+          return Promise.race([
+            p,
+            new Promise(function (resolve) { setTimeout(function () { resolve(""); }, timeoutMs); })
+          ]);
         }
 
         function pushHash(items, seen, hash, title, size, source) {
@@ -1304,7 +1404,6 @@
           if (!text) return items;
           try {
             var j = JSON.parse(text);
-            // 有时包在 data 里
             if (j && j.data && j.data.results) j = j.data;
             var list = (j && j.results) || (j && j.data) || [];
             if (!Array.isArray(list)) list = [];
@@ -1321,15 +1420,12 @@
               pushHash(items, seen, hash, it.title || it.name, size, "solid");
               if (items.length >= 20) break;
             }
-          } catch (e) {
-            log("solid parse", e && e.message || e, text.slice(0, 80));
-          }
+          } catch (e) {}
           return items;
         }
 
         function fromRss(xml) {
-          var items = parseSukebeiRss(xml, number) || [];
-          return items;
+          return parseSukebeiRss(xml, number) || [];
         }
 
         function fromHtml(html) {
@@ -1341,37 +1437,73 @@
             pushHash(items, seen, m[1], number, "", "html");
             if (items.length >= 15) break;
           }
+          var re2 = /\/download\/([a-fA-F0-9]{40})\.torrent/ig;
+          while ((m = re2.exec(String(html || ""))) !== null) {
+            pushHash(items, seen, m[1], number, "", "html");
+            if (items.length >= 15) break;
+          }
           return items;
         }
 
-        var q = encodeURIComponent(number);
-        var urls = [
-          { type: "solid", url: "https://solidtorrents.to/api/v1/search?q=" + q + "&category=all&sort=seeders" },
-          { type: "rss", url: "https://sukebei.nyaa.si/?page=rss&c=0_0&f=0&q=" + q },
-          { type: "html", url: "https://sukebei.nyaa.si/?f=0&c=0_0&q=" + q }
-        ];
-
-        log("magnet search start", number);
-        // 串行尝试，避免并发被拦；每个源限时
-        function tryAt(i) {
-          if (i >= urls.length) return Promise.resolve([]);
-          var src = urls[i];
-          return Promise.race([
-            doReq(src.url),
-            new Promise(function (resolve) { setTimeout(function () { resolve(""); }, 10000); })
-          ]).then(function (body) {
-            var items = [];
-            if (src.type === "solid") items = fromSolid(body);
-            else if (src.type === "rss") items = fromRss(body);
-            else items = fromHtml(body);
-            log("magnet source", src.type, "got", items.length);
-            if (items.length) return items;
-            return tryAt(i + 1);
-          }).catch(function () {
-            return tryAt(i + 1);
-          });
+        // 主番号 + 变体并行走 Sukebei RSS（命中率最高），整体限时约 10 秒
+        var tasks = [];
+        var used = {};
+        for (var vi = 0; vi < queryVariants.length && vi < 3; vi++) {
+          var qv = queryVariants[vi];
+          if (!qv || used[qv]) continue;
+          used[qv] = 1;
+          (function (q) {
+            tasks.push(
+              doReq("https://sukebei.nyaa.si/?page=rss&c=0_0&f=0&q=" + encodeURIComponent(q), 8000)
+                .then(fromRss)
+            );
+          })(qv);
         }
-        return tryAt(0);
+        // Solid 只试主番号一次
+        tasks.push(
+          doReq("https://solidtorrents.to/api/v1/search?q=" + encodeURIComponent(queryVariants[0] || number) + "&category=all&sort=seeders", 7000)
+            .then(fromSolid)
+        );
+
+        log("magnet search start", number, "q=", queryVariants.join(" | "));
+
+        return new Promise(function (resolve) {
+          var settled = 0;
+          var best = [];
+          var done = false;
+          var overallTimer = setTimeout(function () {
+            if (done) return;
+            done = true;
+            log("magnet search timeout, best=", best.length);
+            resolve(best);
+          }, 10000);
+
+          function finish(items) {
+            if (done) return;
+            if (items && items.length) {
+              done = true;
+              clearTimeout(overallTimer);
+              log("magnet search hit", items.length);
+              resolve(items);
+              return;
+            }
+            settled++;
+            if (settled >= tasks.length) {
+              done = true;
+              clearTimeout(overallTimer);
+              resolve(best);
+            }
+          }
+
+          for (var t = 0; t < tasks.length; t++) {
+            tasks[t].then(function (items) {
+              if (items && items.length > best.length) best = items;
+              finish(items);
+            }).catch(function () {
+              finish([]);
+            });
+          }
+        });
       }
 
       var TRACKERS = [
@@ -1921,6 +2053,8 @@
           magnets: [],
           number: extractNumber(fallbackTitle || "")
         };
+
+        // 1) 官方 App API 磁链
         var official = apiRequest("/api/v1/movies/" + encodeURIComponent(vid) + "/magnets", {}).then(function (magData) {
           var list = sortMagnets((magData && magData.magnets) || []);
           var out = [];
@@ -1947,24 +2081,96 @@
           log("official magnets error", err && err.message || err);
           return [];
         });
+
+        // 2) 网页详情页磁链（官方 API 为空时兜底，限时 6 秒）
+        function tryWebPageMagnets() {
+          var url = buildDetailUrl(vid);
+          return Promise.race([
+            fetchWithCache(url).then(function (html) {
+              var doc = parseHtml(html);
+              var parsed = parseDetailPage(doc);
+              if (!parsed || !parsed.magnets || !parsed.magnets.length) return [];
+              if (parsed.title && !result.title) result.title = parsed.title;
+              if (parsed.cover && !result.cover) result.cover = normalizeCover(parsed.cover, vid);
+              if (parsed.score) result.score = parsed.score;
+              var out = [];
+              for (var i = 0; i < parsed.magnets.length; i++) {
+                var m = parsed.magnets[i];
+                if (!m || !m.url) continue;
+                out.push({
+                  name: m.name || "magnet",
+                  url: m.url,
+                  size: m.size || "",
+                  date: m.date || "",
+                  source: "web"
+                });
+              }
+              log("webpage magnets", out.length);
+              return out;
+            }).catch(function (err) {
+              log("webpage magnets error", err && err.message || err);
+              return [];
+            }),
+            new Promise(function (resolve) { setTimeout(function () { resolve([]); }, 6000); })
+          ]);
+        }
+
         return official.then(function (mags) {
           if (mags && mags.length) {
             result.magnets = mags;
             return result;
           }
+          // API 无结果：网页 + 外部搜索并行，谁先有结果用谁；整体约 12 秒内结束
           var num = result.number || extractNumber(result.title) || "";
           if (!num && result.title) {
             num = String(result.title).split(/\s+/)[0] || "";
           }
           result.number = num;
-          if (!num) return result;
-          return Promise.race([
-            fetchMagnetsByNumber(num),
-            new Promise(function (resolve) { setTimeout(function () { resolve([]); }, 35000); })
-          ]).then(function (alt) {
-            result.magnets = alt || [];
-            return result;
-          }).catch(function () { return result; });
+
+          var webP = tryWebPageMagnets();
+          var extP = (num || result.title)
+            ? fetchMagnetsByNumber(num, result.title)
+            : Promise.resolve([]);
+
+          return new Promise(function (resolve) {
+            var finished = false;
+            var pending = 2;
+            var best = [];
+            var timer = setTimeout(function () {
+              if (finished) return;
+              finished = true;
+              result.magnets = best;
+              resolve(result);
+            }, 12000);
+
+            function onPart(items) {
+              if (finished) return;
+              if (items && items.length) {
+                finished = true;
+                clearTimeout(timer);
+                result.magnets = items;
+                resolve(result);
+                return;
+              }
+              pending--;
+              if (pending <= 0) {
+                finished = true;
+                clearTimeout(timer);
+                result.magnets = best;
+                resolve(result);
+              }
+            }
+
+            webP.then(function (items) {
+              if (items && items.length > best.length) best = items;
+              onPart(items);
+            }).catch(function () { onPart([]); });
+
+            extP.then(function (items) {
+              if (items && items.length > best.length) best = items;
+              onPart(items);
+            }).catch(function () { onPart([]); });
+          });
         }).catch(function () { return result; });
       }
 
@@ -2191,7 +2397,11 @@
           } else if (data.magnetsError) {
             noMag.textContent = "磁链加载失败: " + data.magnetsError;
           } else if (data.number) {
-            noMag.textContent = "自动搜索无结果（" + data.number + "）";
+            var isFc2 = /^FC2/i.test(data.number);
+            noMag.textContent = isFc2
+              ? "自动搜索无结果（" + data.number + "）\n新作可能尚未有人发布种子，稍后再试"
+              : "自动搜索无结果（" + data.number + "）";
+            noMag.style.whiteSpace = "pre-line";
           } else {
             noMag.textContent = "暂无磁链（标题中未识别到番号）";
           }
@@ -2200,6 +2410,21 @@
             var actions = document.createElement("div");
             actions.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;justify-content:center;";
             var num = data.number;
+            // FC2 优先用 FC2-PPV-数字；动漫优先用日文标题关键词
+            var searchQ = num;
+            var fc2d = (num.match(/FC2[-_]?(\d{5,8})/i) || [])[1];
+            if (fc2d) {
+              searchQ = "FC2-PPV-" + fc2d;
+            } else if (data.title) {
+              var t = String(data.title)
+                .replace(num, " ")
+                .replace(/第\s*\d+\s*[話话巻卷]/g, " ")
+                .replace(/THE\s*ANIMATION/ig, " ")
+                .replace(/[!！?？~～]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+              if (t.length >= 4) searchQ = t.length > 36 ? t.slice(0, 36) : t;
+            }
             function addAction(label, url) {
               var a = document.createElement("button");
               a.className = "btn small";
@@ -2215,8 +2440,8 @@
               });
               actions.appendChild(a);
             }
-            addAction("Sukebei搜索", "https://sukebei.nyaa.si/?f=0&c=0_0&q=" + encodeURIComponent(num));
-            addAction("Solid搜索", "https://solidtorrents.to/search?q=" + encodeURIComponent(num));
+            addAction("Sukebei搜索", "https://sukebei.nyaa.si/?f=0&c=0_0&q=" + encodeURIComponent(searchQ));
+            addAction("Solid搜索", "https://solidtorrents.to/search?q=" + encodeURIComponent(searchQ));
             var copyBtn = document.createElement("button");
             copyBtn.className = "btn small primary";
             copyBtn.textContent = "复制番号";
