@@ -1445,25 +1445,97 @@
           return items;
         }
 
-        // 主番号 + 变体并行走 Sukebei RSS（命中率最高），整体限时约 10 秒
+        // 磁力君同源：CiLiGeGe（href=/magnet/{hash}）
+        function fromCiliGeGe(html) {
+          var items = [];
+          var seen = {};
+          html = String(html || "");
+          if (!html || html.length < 200) return items;
+          var re = /href=["']\/magnet\/([a-fA-F0-9]{40})["'][^>]*>([^<]*)/ig;
+          var m;
+          while ((m = re.exec(html)) !== null) {
+            pushHash(items, seen, m[1], cleanText(m[2] || number), "", "ciligege");
+            if (items.length >= 20) break;
+          }
+          if (!items.length) {
+            var re2 = /\/magnet\/([a-fA-F0-9]{40})/ig;
+            while ((m = re2.exec(html)) !== null) {
+              pushHash(items, seen, m[1], number, "", "ciligege");
+              if (items.length >= 15) break;
+            }
+          }
+          if (!items.length) {
+            var re3 = /magnet:\?xt=urn:btih:([a-fA-F0-9]{40})/ig;
+            while ((m = re3.exec(html)) !== null) {
+              pushHash(items, seen, m[1], number, "", "ciligege");
+              if (items.length >= 15) break;
+            }
+          }
+          return items;
+        }
+
+        // 磁力君同源：磁力蜘蛛 btmovi（href=/bt/{hash}）
+        function fromBtMovi(html) {
+          var items = [];
+          var seen = {};
+          html = String(html || "");
+          if (!html || html.length < 200) return items;
+          var re = /href=["']\/bt\/([a-fA-F0-9]{40})["'][^>]*>/ig;
+          var m;
+          while ((m = re.exec(html)) !== null) {
+            pushHash(items, seen, m[1], number, "", "btmovi");
+            if (items.length >= 20) break;
+          }
+          if (!items.length) {
+            var re2 = /\/bt\/([a-fA-F0-9]{40})/ig;
+            while ((m = re2.exec(html)) !== null) {
+              pushHash(items, seen, m[1], number, "", "btmovi");
+              if (items.length >= 15) break;
+            }
+          }
+          return items;
+        }
+
+        // 并行：Sukebei + 磁力君(CiLiGeGe/磁力蜘蛛) + Solid
         var tasks = [];
         var used = {};
+        var primaryQ = queryVariants[0] || number || "";
         for (var vi = 0; vi < queryVariants.length && vi < 3; vi++) {
           var qv = queryVariants[vi];
           if (!qv || used[qv]) continue;
           used[qv] = 1;
           (function (q) {
+            var qEnc = encodeURIComponent(q);
+            var qLow = encodeURIComponent(String(q).toLowerCase());
+            // Sukebei RSS
             tasks.push(
-              doReq("https://sukebei.nyaa.si/?page=rss&c=0_0&f=0&q=" + encodeURIComponent(q), 8000)
+              doReq("https://sukebei.nyaa.si/?page=rss&c=0_0&f=0&q=" + qEnc, 8000)
                 .then(fromRss)
+            );
+            // 磁力君 · CiLiGeGe（必须小写 path，否则会 301 空页）
+            tasks.push(
+              doReq("https://www.ciligege2.com/search/" + qLow + "/1", 8000)
+                .then(fromCiliGeGe)
             );
           })(qv);
         }
-        // Solid 只试主番号一次
-        tasks.push(
-          doReq("https://solidtorrents.to/api/v1/search?q=" + encodeURIComponent(queryVariants[0] || number) + "&category=all&sort=seeders", 7000)
-            .then(fromSolid)
-        );
+        if (primaryQ) {
+          var pEnc = encodeURIComponent(primaryQ);
+          var pLow = encodeURIComponent(String(primaryQ).toLowerCase());
+          tasks.push(
+            doReq("https://www.ciligege.com/search/" + pLow + "/1", 7000)
+              .then(fromCiliGeGe)
+          );
+          // 磁力君 · 磁力蜘蛛
+          tasks.push(
+            doReq("https://btmovi.cyou/so/" + pLow + ".html", 8000)
+              .then(fromBtMovi)
+          );
+          tasks.push(
+            doReq("https://solidtorrents.to/api/v1/search?q=" + pEnc + "&category=all&sort=seeders", 7000)
+              .then(fromSolid)
+          );
+        }
 
         log("magnet search start", number, "q=", queryVariants.join(" | "));
 
@@ -2441,6 +2513,7 @@
               actions.appendChild(a);
             }
             addAction("Sukebei搜索", "https://sukebei.nyaa.si/?f=0&c=0_0&q=" + encodeURIComponent(searchQ));
+            addAction("磁力君搜索", "https://www.ciligege2.com/search/" + encodeURIComponent(String(searchQ).toLowerCase()) + "/1");
             addAction("Solid搜索", "https://solidtorrents.to/search?q=" + encodeURIComponent(searchQ));
             var copyBtn = document.createElement("button");
             copyBtn.className = "btn small primary";
