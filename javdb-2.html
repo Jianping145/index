@@ -1523,6 +1523,7 @@
       function fetchDetail(vid, number, title, fallbackCover) {
         var result = {
           vid: String(vid),
+          number: number ? String(number) : "",
           title: cleanText(title || number || vid),
           cover: normalizeCover(fallbackCover || ""),
           score: "", date: "", magnets: []
@@ -1565,14 +1566,380 @@
                 if (parsed.date) result.date = parsed.date;
                 if (parsed.magnets) result.magnets = parsed.magnets;
             }
-            if (result.magnets.length === 0) {
-                result.noMagnet = true;
+            if (!result.magnets || result.magnets.length === 0) {
+                return supplementWithSobt(result, result.number, result.title, result.vid);
             }
             return result;
+        }).catch(function (err) {
+            log("fetchDetailByUrl error", err);
+            // CF / 网络失败也走 SOBT 补充
+            return supplementWithSobt(result, result.number, result.title, result.vid).then(function (r) {
+              if ((!r.magnets || !r.magnets.length) && err && err.message) {
+                r.errorMsg = String(err.message);
+              }
+              return r;
+            });
         });
       }
 
-      function proxyImage(url) {
+      
+      function utf8ToBase64(str) {
+        try {
+          return btoa(unescape(encodeURIComponent(String(str || ""))));
+        } catch (e) {
+          try { return btoa(String(str || "")); } catch (e2) { return ""; }
+        }
+      }
+
+      // 巴士资源站 site/10005 → SOBT 镜像，官方无磁链 / CF 拦截时补充
+      var SOBT_HOSTS = [
+        "https://sobt11.vip",
+        "https://sobt.app",
+        "https://sobt.me"
+      ];
+
+      function fetchExternalHtml(url, referer) {
+        var reqOpts = {
+          method: "GET",
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Referer": referer || (url.split("/").slice(0, 3).join("/") + "/")
+          },
+          timeout: 15000
+        };
+        var fm = sdk();
+        if (fm && fm.req) {
+          return fm.req(url, reqOpts).then(function (resp) {
+            if (resp && resp.body) return String(resp.body);
+            if (resp && resp.ok === false) throw new Error("external req failed");
+            return String((resp && resp.body) || "");
+          });
+        }
+        return fetch(url, reqOpts).then(function (r) {
+          return r.text();
+        });
+      }
+
+      function extractKeywordForMagnet(result, number, title, vid) {
+        var kw = "";
+        if (number) kw = String(number);
+        if (!kw && title) kw = String(title);
+        if (!kw && result && result.title) kw = String(result.title);
+        if (!kw && vid) kw = String(vid);
+        kw = cleanText(kw);
+        var m = kw.match(/([A-Za-z]{1,15}-?\d{2,6}[A-Za-z]?)/);
+        if (m) return m[1];
+        m = kw.match(/(\d{5,6}-\d{2,4})/);
+        if (m) return m[1];
+        return kw;
+      }
+
+      function searchSobtMagnets(keyword) {
+        var kw = cleanText(keyword || "");
+        if (!kw) return Promise.resolve([]);
+        var wd = utf8ToBase64(kw);
+        if (!wd) return Promise.resolve([]);
+        log("SOBT search:", kw, wd);
+
+        var tryHost = function (index) {
+          if (index >= SOBT_HOSTS.length) return Promise.resolve([]);
+          var host = SOBT_HOSTS[index];
+          var listUrl = host + "/q/" + encodeURIComponent(wd);
+          return fetchExternalHtml(listUrl, host + "/").then(function (html) {
+            if (!html || html.indexOf("/doc/") < 0) {
+              log("SOBT no list on", host, "len", html ? html.length : 0);
+              return tryHost(index + 1);
+            }
+            var paths = [];
+            var re = /href="(\/doc\/[^"]+\.html)"/g;
+            var m;
+            while ((m = re.exec(html)) && paths.length < 8) {
+              if (paths.indexOf(m[1]) < 0) paths.push(m[1]);
+            }
+            if (!paths.length) return tryHost(index + 1);
+
+            // also try parse title/size near each link for display; magnets from detail
+            var jobs = paths.map(function (path) {
+              return fetchExternalHtml(host + path, listUrl).then(function (dhtml) {
+                var out = [];
+                if (!dhtml) return out;
+                var mags = dhtml.match(/magnet:\?xt=urn:btih:[a-fA-F0-9]{40}[^\"'\s<>]*/gi) || [];
+                var title = "";
+                var tm = dhtml.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i) || dhtml.match(/<title>([^<]+)<\/title>/i);
+                if (tm) title = cleanText(tm[1] || "");
+                var size = "";
+                var sm = dhtml.match(/([0-9]+(?:\.[0-9]+)?)\s*(GiB|MiB|GB|MB|TB|Gb|Mb)/i);
+                if (sm) size = sm[1] + " " + sm[2];
+                for (var i = 0; i < mags.length; i++) {
+                  var u = mags[i].replace(/&amp;/g, "&").replace(/[\"'<>].*$/, "").trim();
+                  out.push({
+                    name: (title || kw) + (size ? (" · " + size) : "") + " [SOBT]",
+                    size: size,
+                    url: u,
+                    magnet: u,
+                    source: "SOBT"
+                  });
+                }
+                return out;
+              }).catch(function (e) {
+                log("SOBT detail err", path, e);
+                return [];
+              });
+            });
+            return Promise.all(jobs).then(function (arrs) {
+              var all = [];
+              var seen = {};
+              for (var a = 0; a < arrs.length; a++) {
+                for (var b = 0; b < arrs[a].length; b++) {
+                  var item = arrs[a][b];
+                  var key = String(item.url || item.magnet || "").toLowerCase();
+                  if (!key || seen[key]) continue;
+                  seen[key] = 1;
+                  all.push(item);
+                }
+              }
+              log("SOBT magnets found", all.length, "via", host);
+              if (!all.length) return tryHost(index + 1);
+              return all;
+            });
+          }).catch(function (e) {
+            log("SOBT host err", host, e);
+            return tryHost(index + 1);
+          });
+        };
+        return tryHost(0);
+      }
+
+      function searchCiliMagnets(keyword) {
+        var kw = cleanText(keyword || "");
+        if (!kw) return Promise.resolve([]);
+        // cili.info = 0magnet / ØMagnet
+        var hosts = ["https://cili.info", "https://0magnet.com", "https://0cili.com"];
+        var tryHost = function (index) {
+          if (index >= hosts.length) return Promise.resolve([]);
+          var host = hosts[index];
+          var listUrl = host + "/search?q=" + encodeURIComponent(kw);
+          return fetchExternalHtml(listUrl, host + "/").then(function (html) {
+            if (!html || html.indexOf('href="/!') < 0) {
+              log("CILI no list on", host, "len", html ? html.length : 0);
+              return tryHost(index + 1);
+            }
+            var sids = [];
+            var re = /href="(\/![A-Za-z0-9]+)"/g;
+            var m;
+            while ((m = re.exec(html)) && sids.length < 8) {
+              if (sids.indexOf(m[1]) < 0) sids.push(m[1]);
+            }
+            if (!sids.length) return tryHost(index + 1);
+
+            // parse title/size from list rows when possible
+            var listMeta = {};
+            for (var i = 0; i < sids.length; i++) {
+              var sid = sids[i];
+              var p = html.indexOf('href="' + sid + '"');
+              if (p < 0) continue;
+              var block = html.substring(p, Math.min(html.length, p + 400));
+              var title = "";
+              var aend = block.indexOf("</a>");
+              if (aend > 0) {
+                var gt = block.indexOf(">");
+                if (gt >= 0) title = cleanText(block.substring(gt + 1, aend).replace(/<[^>]+>/g, ""));
+              }
+              var size = "";
+              var sm = block.match(/([0-9]+(?:\.[0-9]+)?)\s*(GB|MB|KB|TB)/i);
+              if (sm) size = sm[1] + " " + sm[2].toUpperCase();
+              listMeta[sid] = { title: title, size: size };
+            }
+
+            var jobs = sids.map(function (sid) {
+              return fetchExternalHtml(host + sid, listUrl).then(function (dhtml) {
+                var out = [];
+                if (!dhtml) return out;
+                var mags = dhtml.match(/magnet:\?xt=urn:btih:[a-fA-F0-9]{40}[^"'\s<>]*/gi) || [];
+                var meta = listMeta[sid] || {};
+                var title = meta.title || kw;
+                var size = meta.size || "";
+                if (!size) {
+                  var sm2 = dhtml.match(/([0-9]+(?:\.[0-9]+)?)\s*(GB|MB|KB|TB)/i);
+                  if (sm2) size = sm2[1] + " " + sm2[2].toUpperCase();
+                }
+                for (var j = 0; j < mags.length; j++) {
+                  var u = mags[j].replace(/&amp;/g, "&").replace(/["'<>].*$/, "").trim();
+                  // keep short magnet if too long
+                  var short = u;
+                  var btih = u.match(/btih:([a-fA-F0-9]{40})/i);
+                  if (btih && u.length > 80) short = "magnet:?xt=urn:btih:" + btih[1].toLowerCase();
+                  out.push({
+                    name: (title || kw) + (size ? (" · " + size) : "") + " [CILI]",
+                    size: size,
+                    url: short,
+                    magnet: short,
+                    source: "CILI"
+                  });
+                }
+                return out;
+              }).catch(function () { return []; });
+            });
+            return Promise.all(jobs).then(function (arrs) {
+              var all = [];
+              var seen = {};
+              for (var a = 0; a < arrs.length; a++) {
+                for (var b = 0; b < arrs[a].length; b++) {
+                  var item = arrs[a][b];
+                  var key = String(item.url || "").toLowerCase();
+                  if (!key || seen[key]) continue;
+                  seen[key] = 1;
+                  all.push(item);
+                }
+              }
+              log("CILI magnets found", all.length, "via", host);
+              if (!all.length) return tryHost(index + 1);
+              return all;
+            });
+          }).catch(function () {
+            return tryHost(index + 1);
+          });
+        };
+        return tryHost(0);
+      }
+
+
+      function searchCssMagnets(keyword) {
+        var kw = cleanText(keyword || "");
+        if (!kw) return Promise.resolve([]);
+        // cilisousuo.cc
+        var hosts = ["https://cilisousuo.cc", "https://www.cilisousuo.cc"];
+        var tryHost = function (index) {
+          if (index >= hosts.length) return Promise.resolve([]);
+          var host = hosts[index];
+          var listUrl = host + "/search?q=" + encodeURIComponent(kw);
+          return fetchExternalHtml(listUrl, host + "/").then(function (html) {
+            if (!html || html.indexOf("/magnet/") < 0) {
+              log("CSS no list on", host, "len", html ? html.length : 0);
+              return tryHost(index + 1);
+            }
+            var paths = [];
+            var re = /href="(\/magnet\/[^"]+)"/g;
+            var m;
+            while ((m = re.exec(html)) && paths.length < 8) {
+              if (paths.indexOf(m[1]) < 0) paths.push(m[1]);
+            }
+            if (!paths.length) return tryHost(index + 1);
+
+            var listMeta = {};
+            for (var i = 0; i < paths.length; i++) {
+              var path = paths[i];
+              var p = html.indexOf('href="' + path + '"');
+              if (p < 0) continue;
+              var block = html.substring(Math.max(0, p - 250), Math.min(html.length, p + 80));
+              var title = "";
+              var tm = block.match(/result-title[^>]*>([\s\S]*?)<\/div>/i);
+              if (tm) title = cleanText(tm[1].replace(/<[^>]+>/g, ""));
+              var size = "";
+              var sm = block.match(/class="size">([^<]+)</i) || block.match(/([0-9]+(?:\.[0-9]+)?)\s*(GB|MB|KB|TB)/i);
+              if (sm) size = cleanText(sm[1] + (sm[2] ? (" " + sm[2]) : ""));
+              listMeta[path] = { title: title, size: size };
+            }
+
+            var jobs = paths.map(function (path) {
+              return fetchExternalHtml(host + path, listUrl).then(function (dhtml) {
+                var out = [];
+                if (!dhtml) return out;
+                var mags = dhtml.match(/magnet:\?xt=urn:btih:[a-fA-F0-9]{40}[^\"'\s<>]*/gi) || [];
+                var meta = listMeta[path] || {};
+                var title = meta.title || kw;
+                var size = meta.size || "";
+                for (var j = 0; j < mags.length; j++) {
+                  var u = mags[j].replace(/&amp;/g, "&").replace(/[\"'<>].*$/, "").trim();
+                  var btih = u.match(/btih:([a-fA-F0-9]{40})/i);
+                  var short = u;
+                  if (btih && u.length > 90) short = "magnet:?xt=urn:btih:" + btih[1].toLowerCase();
+                  out.push({
+                    name: (title || kw) + (size ? (" · " + size) : "") + " [磁力搜索]",
+                    size: size,
+                    url: short,
+                    magnet: short,
+                    source: "CSS"
+                  });
+                }
+                return out;
+              }).catch(function () { return []; });
+            });
+            return Promise.all(jobs).then(function (arrs) {
+              var all = [];
+              var seen = {};
+              for (var a = 0; a < arrs.length; a++) {
+                for (var b = 0; b < arrs[a].length; b++) {
+                  var item = arrs[a][b];
+                  var key = String(item.url || "").toLowerCase();
+                  if (!key || seen[key]) continue;
+                  seen[key] = 1;
+                  all.push(item);
+                }
+              }
+              log("CSS magnets found", all.length, "via", host);
+              if (!all.length) return tryHost(index + 1);
+              return all;
+            });
+          }).catch(function () {
+            return tryHost(index + 1);
+          });
+        };
+        return tryHost(0);
+      }
+
+      function applyExternalMagnets(result, extra, source) {
+        if (extra && extra.length) {
+          result.magnets = extra;
+          result.magnetSource = source;
+          result.noMagnet = false;
+          result.errorMsg = "";
+          return true;
+        }
+        return false;
+      }
+
+      function supplementWithSobt(result, number, title, vid) {
+        var kw = extractKeywordForMagnet(result, number, title, vid);
+        if (!kw) {
+          result.noMagnet = true;
+          return Promise.resolve(result);
+        }
+        // SOBT → cili.info → cilisousuo.cc
+        return searchSobtMagnets(kw).then(function (extra) {
+          if (applyExternalMagnets(result, extra, "SOBT")) return result;
+          return searchCiliMagnets(kw).then(function (extra2) {
+            if (applyExternalMagnets(result, extra2, "CILI")) return result;
+            return searchCssMagnets(kw).then(function (extra3) {
+              if (applyExternalMagnets(result, extra3, "CSS")) return result;
+              if (!result.magnets || !result.magnets.length) result.noMagnet = true;
+              return result;
+            });
+          });
+        }).catch(function () {
+          return searchCiliMagnets(kw).then(function (extra2) {
+            if (applyExternalMagnets(result, extra2, "CILI")) return result;
+            return searchCssMagnets(kw).then(function (extra3) {
+              if (applyExternalMagnets(result, extra3, "CSS")) return result;
+              if (!result.magnets || !result.magnets.length) result.noMagnet = true;
+              return result;
+            });
+          }).catch(function () {
+            return searchCssMagnets(kw).then(function (extra3) {
+              if (applyExternalMagnets(result, extra3, "CSS")) return result;
+              if (!result.magnets || !result.magnets.length) result.noMagnet = true;
+              return result;
+            }).catch(function () {
+              if (!result.magnets || !result.magnets.length) result.noMagnet = true;
+              return result;
+            });
+          });
+        });
+      }
+
+function proxyImage(url) {
         if (!url) return "";
         url = normalizeCover(url, "");
         var fm = sdk();
@@ -1784,7 +2151,7 @@
           var noMag = document.createElement("div");
           noMag.className = "empty";
           if (data.errorMsg && data.errorMsg.indexOf("CLOUDFLARE") !== -1) {
-             noMag.textContent = "JavDB 开启了防爬盾，需设置 Cookie 才能获取磁链";
+             noMag.textContent = "JavDB 防爬拦截，且外部补充源未找到磁链。可设置 Cookie 重试官方源";
              var btn = document.createElement("button");
              btn.className = "btn primary small";
              btn.textContent = "🔑 去设置 Cookie";
@@ -1793,7 +2160,7 @@
              });
              noMag.appendChild(btn);
           } else if (data.noMagnet) {
-             noMag.textContent = "该视频暂无磁力链接";
+             noMag.textContent = "官方与外部补充源均未找到磁力链接";
           } else {
              noMag.textContent = data.errorMsg || "暂无磁链（可能需登录或 Cookie 失效）";
           }
@@ -1844,9 +2211,22 @@
         }).catch(function (err) {
           if (token !== state.routeToken) return;
           log("fetchDetail error", err);
-          initialData.magnets = [];
-          initialData.errorMsg = "抓取失败: " + (err.message || "网络异常");
-          renderDetail(initialData, vid, fallbackCover);
+          // 官方失败时仍尝试 SOBT 补充磁链
+          var fallback = {
+            vid: vid,
+            title: title || number || vid,
+            cover: fallbackCover || "",
+            score: "",
+            date: "",
+            magnets: []
+          };
+          supplementWithSobt(fallback, number, title, vid).then(function (data) {
+            if (token !== state.routeToken) return;
+            if (!data.magnets || !data.magnets.length) {
+              data.errorMsg = (err && err.message) ? String(err.message) : "抓取失败";
+            }
+            renderDetail(data, vid, fallbackCover);
+          });
         });
       }
 
